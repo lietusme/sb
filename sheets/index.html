@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lapų planas</title>
+  <style>
+    :root { --ink:#1f2a33; --paper:#fff; --line:#c9c4b6; --soft:#f2efe7; --waste:#d8d5ce; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#f7f6f2; color:var(--ink); font:12px "Helvetica Neue",Arial,sans-serif; }
+    button,input,select { font:inherit; }
+    button { cursor:pointer; }
+    header { min-height:48px; padding:10px 16px; background:var(--ink); color:#fff; display:flex; align-items:center; gap:12px; }
+    header h1 { margin:0; font-size:12px; flex:1; }
+    .toolbar { display:flex; gap:8px; }
+    .toolbar button { margin:0; border:1px solid #6b7782; background:transparent; color:#fff; padding:6px 10px; }
+    .wrap { max-width:1120px; margin:0 auto; padding:16px; }
+    .grid { display:grid; grid-template-columns:300px minmax(0,1fr); gap:16px; }
+    .card { background:var(--paper); border:1px solid var(--line); border-radius:4px; box-shadow:0 2px 8px rgba(31,42,51,.06); padding:12px; margin-bottom:12px; }
+    .card h2 { margin:0 0 10px; font-size:12px; }
+    .row { display:grid; grid-template-columns:minmax(0,1fr) 58px 58px 28px; gap:6px; align-items:center; margin-bottom:8px; }
+    .row.area { grid-template-columns:minmax(0,1fr) 58px 58px 42px 28px; }
+    .row input { width:100%; min-width:0; border:1px solid var(--line); padding:5px 6px; }
+    .row button { width:28px; height:28px; margin:0; border:1px solid #bbb4a5; background:#fff; padding:0; }
+    .section-title { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .section-title button { margin:0; border:1px solid #9aa0a4; background:#fff; padding:5px 8px; }
+    .unit-row { display:grid; grid-template-columns:1fr 110px; gap:8px; align-items:center; margin-bottom:10px; }
+    select { width:100%; border:1px solid var(--line); padding:5px; background:#fff; }
+    .param-grid { display:grid; grid-template-columns:minmax(0,1fr) 64px; gap:6px 8px; align-items:center; }
+    .param-grid input { width:100%; border:1px solid var(--line); padding:5px 6px; }
+    .summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+    .metric { border:1px solid #ddd8cb; background:var(--soft); padding:8px; border-radius:3px; }
+    .metric strong { display:block; font-size:18px; margin-bottom:2px; }
+    .mock-layout { display:grid; gap:14px; }
+    .area-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
+    .area-head strong { font-size:12px; }
+    .area-head span { color:#666; }
+    .area-canvas { border:1px solid #777; background:#fafafa; position:relative; overflow:hidden; margin:0 auto; max-width:100%; }
+    .piece { position:absolute; border:1px solid rgba(31,42,51,.8); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; overflow:hidden; }
+    .piece small { position:absolute; left:2px; right:2px; bottom:2px; font-size:9px; font-weight:400; text-align:center; line-height:1.1; }
+    .piece.reused { border-style:dashed; }
+    .piece.uncovered { background:repeating-linear-gradient(135deg,#fff 0 8px,#e5e2da 8px 16px); color:#777; border:1px dashed #999; }
+    .legend { display:flex; flex-wrap:wrap; gap:12px; margin-top:8px; color:#555; }
+    .legend span { display:inline-flex; align-items:center; gap:5px; }
+    .swatch { width:12px; height:12px; border:1px solid #777; }
+    .result-table { width:100%; border-collapse:collapse; }
+    .result-table th,.result-table td { border-bottom:1px solid #e5e1d6; padding:5px 6px; text-align:left; vertical-align:top; }
+    .result-table th { background:var(--soft); }
+    .warn { color:#9b2f20; font-weight:700; }
+    .fine { color:#666; }
+    dialog { border:1px solid var(--line); border-radius:4px; padding:16px; width:min(560px,92vw); }
+    dialog::backdrop { background:rgba(31,42,51,.35); }
+    dialog textarea { width:100%; height:220px; font-family:Menlo,Consolas,monospace; }
+    dialog menu { display:flex; justify-content:flex-end; gap:8px; margin:12px 0 0; padding:0; }
+    dialog button { margin:0; }
+    .toast { position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:20; background:#2e6b3a; color:#fff; padding:8px 16px; border-radius:4px; opacity:0; pointer-events:none; transition:opacity .25s; }
+    .toast.show { opacity:1; }
+    @media (max-width:760px) {
+      header { padding:10px 12px; } .wrap { padding:8px; }
+      .grid { grid-template-columns:1fr; }
+      .summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .toolbar button:first-child { display:none; }
+    }
+    @media print {
+      body { background:#fff; } header,.toolbar,.side-controls { display:none; }
+      .wrap { max-width:none; padding:0; } .grid { grid-template-columns:1fr; }
+      .card { box-shadow:none; break-inside:avoid; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Lapų planas</h1>
+    <div class="toolbar">
+      <button id="jsonBtn" type="button">JSON</button>
+      <button id="resetBtn" type="button">Atstatyti</button>
+      <button id="printBtn" type="button">Spausdinti</button>
+    </div>
+  </header>
+  <div class="toast" id="toast" role="status"></div>
+  <main class="wrap">
+    <div class="grid">
+      <aside class="side-controls">
+        <section class="card">
+          <div class="section-title"><h2>Lapai</h2><button id="addSheetBtn" type="button">+ Pridėti</button></div>
+          <div id="sheetRows"></div>
+        </section>
+        <section class="card">
+          <div class="section-title"><h2>Plotai</h2><button id="addAreaBtn" type="button">+ Pridėti</button></div>
+          <div id="areaRows"></div>
+        </section>
+        <section class="card">
+          <h2>Skaičiavimo parametrai</h2>
+          <div class="unit-row"><label for="unit">Matavimo vienetas</label><select id="unit"><option value="mm">mm</option><option value="cm">cm</option></select></div>
+          <div class="param-grid">
+            <label for="minWidth">Min. likučio plotis</label><input id="minWidth" type="number" value="100" min="0" step="1">
+            <label for="minHeight">Min. likučio aukštis</label><input id="minHeight" type="number" value="100" min="0" step="1">
+            <label for="minArea">Min. likučio plotas</label><input id="minArea" type="number" value="10000" min="0" step="1">
+            <label for="kerf">Pjūvio tarpas</label><input id="kerf" type="number" value="0" min="0" step="0.1">
+          </div>
+        </section>
+      </aside>
+      <div>
+        <section class="card">
+          <h2>Suvestinė</h2>
+          <div class="summary" id="summary"></div>
+        </section>
+        <section class="card">
+          <h2>Išdėstymas</h2>
+          <div class="mock-layout" id="layout"></div>
+          <div class="legend" id="legend"></div>
+        </section>
+        <section class="card">
+          <h2>Lapu detalės</h2>
+          <table class="result-table"><thead><tr><th>Lapų nr.</th><th>Panaudota</th><th>Likutis</th><th>Situacija</th></tr></thead><tbody id="sheetDetails"></tbody></table>
+          <div id="warnings" class="fine"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+  <dialog id="jsonDialog">
+    <h2>JSON duomenys</h2>
+    <textarea id="jsonText" spellcheck="false"></textarea>
+    <menu><button id="copyJsonBtn" type="button">Kopijuoti</button><button id="importJsonBtn" type="button">Įkelti</button><button id="closeJsonBtn" type="button">Uždaryti</button></menu>
+  </dialog>
+  <script>
+    const STORE_KEY = "sheet-layout-v1";
+    const COLORS = ["#4778b3","#d4893a","#4d9a78","#8b63a8","#c45d68","#6d8d45","#4b96a8","#a66d43","#6676bd","#ad7a24","#3d8c74","#a64f82"];
+    const DEFAULT = {
+      unit:"mm", minWidth:100, minHeight:100, minArea:10000, kerf:0,
+      sheets:[{name:"",width:1200,height:2400}],
+      areas:[{name:"Pirmas plotas",width:900,height:600,quantity:1},{name:"Antras plotas",width:700,height:500,quantity:1}]
+    };
+    function clone(v) { return JSON.parse(JSON.stringify(v)); }
+    function positive(v, fallback=0) { const n=Number(v); return Number.isFinite(n)&&n>0?n:fallback; }
+    function areaKey(a) { return `${a.width}x${a.height}`; }
+    function usable(offcut, params) {
+      return offcut.width >= params.minWidth && offcut.height >= params.minHeight &&
+        offcut.width * offcut.height >= params.minArea;
+    }
+    function orientations(piece) {
+      const a=[{...piece,width:piece.width,height:piece.height,rotated:false}];
+      if (piece.width!==piece.height) a.push({...piece,width:piece.height,height:piece.width,rotated:true});
+      return a;
+    }
+    function findBestFit(free, inventory, sheets) {
+      let best=null;
+      for (const [fi,f] of free.entries()) {
+        for (let ii=0;ii<inventory.length;ii++) {
+          const p=inventory[ii];
+          for (const o of orientations(p)) {
+            if (o.width<=0||o.height<=0) continue;
+            const target={width:Math.min(o.width,f.width),height:Math.min(o.height,f.height)};
+            const score=-target.width*target.height+(f.width-target.width)*(f.height-target.height)*.001;
+            if (!best||score<best.score) best={type:"offcut",fi,ii,free:f,piece:o,target,score};
+          }
+        }
+        for (let si=0;si<sheets.length;si++) {
+          const p=sheets[si];
+          for (const o of orientations(p)) {
+            if (o.width<=0||o.height<=0) continue;
+            const target={width:Math.min(o.width,f.width),height:Math.min(o.height,f.height)};
+            const score=-target.width*target.height+(f.width-target.width)*(f.height-target.height)*.001;
+            if (!best||score<best.score) best={type:"sheet",fi,free:f,piece:o,target,sheet:p,score};
+          }
+        }
+      }
+      return best;
+    }
+    function splitFree(f, placed) {
+      const right={x:f.x+placed.width,y:f.y,width:f.width-placed.width,height:placed.height};
+      const bottom={x:f.x,y:f.y+placed.height,width:f.width,height:f.height-placed.height};
+      const result=[];
+      if (right.width>0&&right.height>0) result.push(right);
+      if (bottom.width>0&&bottom.height>0) result.push(bottom);
+      return result;
+    }
+    function splitSheetResidual(source, target, x, y, sourceNumber, params) {
+      const residual=[];
+      const right={x:x+target.width,y:y,width:source.width-target.width,height:target.height,sourceNumber,reused:true};
+      const bottom={x:x,y:y+target.height,width:source.width,height:source.height-target.height,sourceNumber,reused:true};
+      if (right.width>0&&right.height>0) residual.push({width:right.width,height:right.height,sourceNumber,sourceName:"likutis"});
+      if (bottom.width>0&&bottom.height>0) residual.push({width:bottom.width,height:bottom.height,sourceNumber,sourceName:"likutis"});
+      return residual.filter(r=>usable(r,params));
+    }
+    function calculate(data) {
+      const sheets=(data.sheets||[]).map(s=>({name:s.name||"",width:positive(s.width),height:positive(s.height)})).filter(s=>s.width&&s.height);
+      const areas=(data.areas||[]).flatMap(a=>{
+        const w=positive(a.width),h=positive(a.height),q=Math.max(1,Math.floor(Number(a.quantity)||1));
+        if (!w||!h) return [];
+        return Array.from({length:q},(_,i)=>({name:a.name||`Plotas ${i+1}`,width:w,height:h,quantity:1,index:i}));
+      });
+      const params={minWidth:positive(data.minWidth),minHeight:positive(data.minHeight),minArea:positive(data.minArea),kerf:Math.max(0,Number(data.kerf)||0)};
+      const inventory=[], layouts=[], sheetRecords=[], warnings=[];
+      let nextSheet=1;
+      for (const area of areas) {
+        let free=[{x:0,y:0,width:area.width,height:area.height}], placed=[];
+        let guard=0;
+        while (free.length&&guard++<10000) {
+          const fit=findBestFit(free,inventory,sheets);
+          if (!fit) break;
+          const f=fit.free;
+          if (fit.type==="offcut") {
+            const offcut=fit.piece;
+            inventory.splice(fit.ii,1);
+            const target={width:fit.target.width,height:fit.target.height};
+            placed.push({x:f.x,y:f.y,width:target.width,height:target.height,sourceNumber:fit.piece.sourceNumber,reused:true,name:fit.piece.sourceName||"likutis"});
+            const rightW=offcut.width-target.width;
+            if (rightW>0&&target.height>=params.minHeight) {
+              const r={width:rightW,height:target.height,sourceNumber:offcut.sourceNumber,sourceName:"likutis"};
+              if (usable(r,params)) inventory.push(r);
+            }
+            const bottomH=offcut.height-target.height;
+            if (bottomH>0&&offcut.width>=params.minWidth) {
+              const r={width:offcut.width,height:bottomH,sourceNumber:offcut.sourceNumber,sourceName:"likutis"};
+              if (usable(r,params)) inventory.push(r);
+            }
+            free.splice(fit.fi,1,...splitFree(f,target));
+          } else {
+            const source=fit.sheet;
+            const sourceNumber=nextSheet++;
+            const target={width:fit.target.width,height:fit.target.height};
+            placed.push({x:f.x,y:f.y,width:target.width,height:target.height,sourceNumber,reused:false,name:source.name||""});
+            let record=sheetRecords.find(r=>r.number===sourceNumber);
+            if (!record) { record={number:sourceNumber,width:source.width,height:source.height,name:source.name||"",used:[],unused:[]}; sheetRecords.push(record); }
+            record.used.push(`${target.width} x ${target.height}`);
+            const residuals=[];
+            const rightW=fit.piece.width-target.width;
+            if (rightW>0&&target.height>=params.minHeight) residuals.push({width:rightW,height:target.height,sourceNumber,sourceName:"likutis"});
+            const bottomH=fit.piece.height-target.height;
+            if (bottomH>0&&fit.piece.width>=params.minWidth) residuals.push({width:fit.piece.width,height:bottomH,sourceNumber,sourceName:"likutis"});
+            for (const r of residuals) if (usable(r,params)) inventory.push(r); else record.unused.push(`${r.width} x ${r.height}`);
+            free.splice(fit.fi,1,...splitFree(f,target));
+          }
+        }
+        const uncovered=[];
+        for (const f of free) uncovered.push({x:f.x,y:f.y,width:f.width,height:f.height});
+        layouts.push({name:area.name,width:area.width,height:area.height,placed,uncovered});
+      }
+      let covered=areas.reduce((sum,a)=>sum+a.width*a.height,0);
+      let reusableArea=0,reusedCount=0;
+      for (const p of layouts.flatMap(l=>l.placed)) if (p.reused) reusedCount++;
+      for (const r of inventory) {
+        if (usable(r,params)) reusableArea+=r.width*r.height;
+        else {
+          const rec=sheetRecords.find(x=>x.number===r.sourceNumber);
+          if (rec) rec.unused.push(`${r.width} x ${r.height}`);
+        }
+      }
+      const consumed=sheetRecords.reduce((sum,r)=>sum+r.width*r.height,0);
+      const actualCovered=layouts.flatMap(l=>l.placed).reduce((sum,p)=>sum+p.width*p.height,0);
+      const discarded=Math.max(0,consumed-actualCovered-reusableArea);
+      const wastePercent=consumed?discarded/consumed*100:0;
+      for (const l of layouts) for (const u of l.uncovered) warnings.push(`${l.name||"Plotas"}: neuždengta ${u.width} x ${u.height}`);
+      if (!sheets.length) warnings.push("Neįvestas nė vienas lapas.");
+      return {sheets:sheetRecords,inventory,layouts,warnings,fullSheets:sheetRecords.length,reusedCount,reusableArea,discarded,wastePercent,consumed,covered,actualCovered};
+    }
+    function readData() {
+      if (!document) return clone(DEFAULT);
+      const unit=document.getElementById("unit").value;
+      const sheets=[...document.querySelectorAll("#sheetRows .row")].map(row=>{
+        const ins=row.querySelectorAll("input");
+        return {name:ins[0].value,width:Number(ins[1].value),height:Number(ins[2].value)};
+      });
+      const areas=[...document.querySelectorAll("#areaRows .row")].map(row=>{
+        const ins=row.querySelectorAll("input");
+        return {name:ins[0].value,width:Number(ins[1].value),height:Number(ins[2].value),quantity:Number(ins[3].value)||1};
+      });
+      return {unit,sheets,areas,minWidth:Number(document.getElementById("minWidth").value)||0,minHeight:Number(document.getElementById("minHeight").value)||0,minArea:Number(document.getElementById("minArea").value)||0,kerf:Number(document.getElementById("kerf").value)||0};
+    }
+    function saveData(data) { try{localStorage.setItem(STORE_KEY,JSON.stringify(data));}catch(e){} }
+    function loadData() { try{const v=JSON.parse(localStorage.getItem(STORE_KEY)||"null");return v&&typeof v==="object"?v:clone(DEFAULT);}catch(e){return clone(DEFAULT);} }
+    function fmt(n,unit="mm") { if (!Number.isFinite(n)) return "0"; const v=unit==="cm"?n/10:n; return String(Math.round(v*100)/100).replace(".",","); }
+    function fmtArea(n,unit="mm") { if (!Number.isFinite(n)) return "0"; const v=unit==="cm"?n/100:n; return String(Math.round(v*100)/100).replace(".",","); }
+    function createSheetRow(s={name:"",width:1200,height:2400}) {
+      const row=document.createElement("div");row.className="row";
+      row.innerHTML=`<input class="name" type="text" value="${s.name||""}" aria-label="Lapo pavadinimas" placeholder="Pavadinimas (nebūtina)"><input type="number" value="${s.width}" aria-label="Lapo plotis"><input type="number" value="${s.height}" aria-label="Lapo aukštis"><button type="button" aria-label="Šalinti lapą">×</button>`;
+      row.querySelector("button").addEventListener("click",()=>{row.remove();render();});
+      row.querySelectorAll("input").forEach(i=>i.addEventListener("change",render));
+      document.getElementById("sheetRows").appendChild(row);
+    }
+    function createAreaRow(a={name:"",width:900,height:600,quantity:1}) {
+      const row=document.createElement("div");row.className="row area";
+      row.innerHTML=`<input class="name" type="text" value="${a.name||""}" aria-label="Ploto pavadinimas" placeholder="Pavadinimas (nebūtina)"><input type="number" value="${a.width}" aria-label="Ploto plotis"><input type="number" value="${a.height}" aria-label="Ploto aukštis"><input type="number" value="${a.quantity||1}" min="1" aria-label="Kiekis"><button type="button" aria-label="Šalinti plotą">×</button>`;
+      row.querySelector("button").addEventListener("click",()=>{row.remove();render();});
+      row.querySelectorAll("input").forEach(i=>i.addEventListener("change",render));
+      document.getElementById("areaRows").appendChild(row);
+    }
+    function renderSummary(result,data) {
+      document.getElementById("summary").innerHTML=`
+        <div class="metric"><strong>${result.fullSheets}</strong> pilni lapai</div>
+        <div class="metric"><strong>${result.reusedCount}</strong> panaudoti likučiai</div>
+        <div class="metric"><strong>${fmt(result.wastePercent)} %</strong> atliekos</div>
+        <div class="metric"><strong>${fmtArea(result.covered,data.unit)} ${data.unit}²</strong> uždengtas plotas</div>`;
+    }
+    function renderLayout(result,data) {
+      const layout=document.getElementById("layout");layout.innerHTML="";
+      const legend=document.getElementById("legend");legend.innerHTML="";
+      for (const r of result.sheets) legend.insertAdjacentHTML("beforeend",`<span><i class="swatch" style="background:${COLORS[(r.number-1)%COLORS.length]}"></i>#${r.number}</span>`);
+      legend.insertAdjacentHTML("beforeend",'<span><i class="swatch" style="background:repeating-linear-gradient(135deg,#fff 0 8px,#e5e2da 8px 16px)"></i>Nevyžedengta</span>');
+      for (const area of result.layouts) {
+        const block=document.createElement("div");
+        const maxW=520,maxH=220;
+        const scale=Math.min(maxW/area.width,maxH/area.height);
+        const pw=Math.max(1,area.width*scale),ph=Math.max(1,area.height*scale);
+        block.innerHTML=`<div class="area-head"><strong>${area.name}</strong><span>${fmt(area.width,data.unit)} x ${fmt(area.height,data.unit)} ${data.unit}</span></div>`;
+        const canvas=document.createElement("div");canvas.className="area-canvas";canvas.style.width=pw+"px";canvas.style.height=ph+"px";
+        for (const p of area.placed) {
+          const el=document.createElement("div");el.className="piece"+(p.reused?" reused":"");
+          el.style.left=(p.x*scale)+"px";el.style.top=(p.y*scale)+"px";el.style.width=(p.width*scale)+"px";el.style.height=(p.height*scale)+"px";
+          el.style.background=COLORS[(p.sourceNumber-1)%COLORS.length];
+          el.title=`#${p.sourceNumber} · ${fmt(p.width,data.unit)} x ${fmt(p.height,data.unit)} ${data.unit}${p.reused?" · likutis":""}`;
+          el.innerHTML=`#${p.sourceNumber}<small>${fmt(p.width,data.unit)} x ${fmt(p.height,data.unit)}${p.reused?" · likutis":""}</small>`;
+          canvas.appendChild(el);
+        }
+        for (const u of area.uncovered) {
+          const el=document.createElement("div");el.className="piece uncovered";
+          el.style.left=(u.x*scale)+"px";el.style.top=(u.y*scale)+"px";el.style.width=(u.width*scale)+"px";el.style.height=(u.height*scale)+"px";
+          el.textContent="Neuždengta";canvas.appendChild(el);
+        }
+        block.appendChild(canvas);layout.appendChild(block);
+      }
+    }
+    function renderDetails(result,data) {
+      const tbody=document.getElementById("sheetDetails");
+      tbody.innerHTML=result.sheets.length?result.sheets.map(r=>{
+        const reused=result.layouts.flatMap(l=>l.placed).filter(p=>p.reused&&p.sourceNumber===r.number).length;
+        const unused=r.unused.length?r.unused.join(", "):"nėra";
+        return `<tr><td>#${r.number}${r.name?" · "+r.name:""}</td><td>${r.used.join(", ")||"—"}</td><td>${unused}</td><td>${reused?"Panaudota likučiai: "+reused:"Tik pilni lapas"}</td></tr>`;
+      }).join(""):`<tr><td colspan="4" class="warn">Nėra tinkamo lapo arba plotas neužpildytas.</td></tr>`;
+      document.getElementById("warnings").innerHTML=result.warnings.length?`<p class="warn">${result.warnings.join("<br>")}</p>`:
+        `<p>Likutis: <strong>${fmtArea(result.reusableArea,data.unit)} ${data.unit}²</strong>; atmestos dalys: <strong>${fmtArea(result.discarded,data.unit)} ${data.unit}²</strong>.</p>`;
+    }
+    let renderTimer;
+    function render() {
+      clearTimeout(renderTimer);
+      renderTimer=setTimeout(()=>{
+        const data=readData();saveData(data);
+        const result=calculate(data);renderSummary(result,data);renderLayout(result,data);renderDetails(result,data);
+      },30);
+    }
+    function setFromData(data) {
+      document.getElementById("unit").value=data.unit||"mm";
+      document.getElementById("minWidth").value=data.minWidth??100;
+      document.getElementById("minHeight").value=data.minHeight??100;
+      document.getElementById("minArea").value=data.minArea??10000;
+      document.getElementById("kerf").value=data.kerf??0;
+      document.getElementById("sheetRows").innerHTML="";
+      document.getElementById("areaRows").innerHTML="";
+      (data.sheets||[clone(DEFAULT.sheets[0])]).forEach(createSheetRow);
+      (data.areas||[clone(DEFAULT.areas[0])]).forEach(createAreaRow);
+    }
+    function toast(text) { const el=document.getElementById("toast");el.textContent=text;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),1800); }
+    if (typeof document!=="undefined") {
+      const data=loadData();setFromData(data);render();
+      document.getElementById("addSheetBtn").addEventListener("click",()=>{createSheetRow();render();});
+      document.getElementById("addAreaBtn").addEventListener("click",()=>{createAreaRow();render();});
+      let currentUnit=data.unit||"mm";
+      document.getElementById("unit").addEventListener("change",(event)=>{
+        const next=event.target.value;
+        if (next!==currentUnit) {
+          const dimensionFactor=next==="cm"?0.1:10;
+          document.querySelectorAll("#sheetRows .row input[type=number],#areaRows .row input[type=number]:not([aria-label='Kiekis'])").forEach(el=>{
+            el.value=Math.round((Number(el.value)||0)*dimensionFactor*100)/100;
+          });
+          ["minWidth","minHeight","kerf"].forEach(id=>{
+            const el=document.getElementById(id);el.value=Math.round((Number(el.value)||0)*dimensionFactor*100)/100;
+          });
+          const minArea=document.getElementById("minArea");
+          minArea.value=Math.round((Number(minArea.value)||0)*(next==="cm"?0.01:100)*100)/100;
+          currentUnit=next;
+        }
+        render();
+      });
+      document.querySelectorAll("#minWidth,#minHeight,#minArea,#kerf").forEach(el=>el.addEventListener("change",render));
+      document.getElementById("printBtn").addEventListener("click",()=>window.print());
+      document.getElementById("resetBtn").addEventListener("click",()=>{localStorage.removeItem(STORE_KEY);setFromData(clone(DEFAULT));render();toast("Numatytieji atstatyti");});
+      const dialog=document.getElementById("jsonDialog");
+      document.getElementById("jsonBtn").addEventListener("click",()=>{document.getElementById("jsonText").value=JSON.stringify(readData(),null,2);dialog.showModal();});
+      document.getElementById("closeJsonBtn").addEventListener("click",()=>dialog.close());
+      document.getElementById("copyJsonBtn").addEventListener("click",async()=>{await navigator.clipboard.writeText(document.getElementById("jsonText").value);toast("JSON nukopijuotas");});
+      document.getElementById("importJsonBtn").addEventListener("click",()=>{try{const v=JSON.parse(document.getElementById("jsonText").value);setFromData(v);render();dialog.close();toast("Duomenys įkelti");}catch(e){toast("Netinkamas JSON");}});
+    }
+    globalThis.SheetLayoutApi={calculate,usable,orientations,splitFree,splitSheetResidual,DEFAULT,readData};
+  </script>
+</body>
+</html>
