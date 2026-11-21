@@ -19,6 +19,10 @@
     .card { background:var(--paper); border:1px solid var(--line); border-radius:4px; box-shadow:0 2px 8px rgba(31,42,51,.06); padding:12px; margin-bottom:12px; }
     .card h2 { margin:0 0 10px; font-size:12px; }
     .row { display:grid; grid-template-columns:minmax(0,1fr) 58px 58px 28px; gap:6px; align-items:center; margin-bottom:8px; }
+    .sheet-row { grid-template-columns:minmax(0,1fr) 58px 58px; }
+    .sheet-row .groove-check { display:flex; align-items:center; justify-content:center; }
+    .sheet-row select { min-width:86px; padding:5px 3px; }
+    .sheet-row .groove-check input { width:auto; }
     .row.area { grid-template-columns:minmax(0,1fr) 58px 58px 42px 28px; }
     .row input { width:100%; min-width:0; border:1px solid var(--line); padding:5px 6px; }
     .row button { width:28px; height:28px; margin:0; border:1px solid #bbb4a5; background:#fff; padding:0; }
@@ -28,7 +32,7 @@
     select { width:100%; border:1px solid var(--line); padding:5px; background:#fff; }
     .param-grid { display:grid; grid-template-columns:minmax(0,1fr) 64px; gap:6px 8px; align-items:center; }
     .param-grid input { width:100%; border:1px solid var(--line); padding:5px 6px; }
-    .summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+    .summary { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; }
     .metric { border:1px solid #ddd8cb; background:var(--soft); padding:8px; border-radius:3px; }
     .metric strong { display:block; font-size:18px; margin-bottom:2px; }
     .mock-layout { display:grid; gap:14px; }
@@ -128,7 +132,7 @@
     const COLORS = ["#4778b3","#d4893a","#4d9a78","#8b63a8","#c45d68","#6d8d45","#4b96a8","#a66d43","#6676bd","#ad7a24","#3d8c74","#a64f82"];
     const DEFAULT = {
       unit:"mm", minWidth:100, minHeight:100, minArea:10000, kerf:0,
-      sheets:[{name:"",width:1200,height:2400}],
+      sheets:[{name:"",width:1200,height:2400,orientation:"any",grooved:false}],
       areas:[{name:"Pirmas plotas",width:900,height:600,quantity:1},{name:"Antras plotas",width:700,height:500,quantity:1}]
     };
     function clone(v) { return JSON.parse(JSON.stringify(v)); }
@@ -141,9 +145,39 @@
     function orientations(piece) {
       const a=[{...piece,width:piece.width,height:piece.height,rotated:false}];
       if (piece.width!==piece.height) a.push({...piece,width:piece.height,height:piece.width,rotated:true});
+      if (piece.orientation==="horizontal") return a.sort((x,y)=>Number(y.width>=y.height)-Number(x.width>=x.height));
+      if (piece.orientation==="vertical") return a.sort((x,y)=>Number(y.height>=y.width)-Number(x.height>=x.width));
       return a;
     }
-    function findBestFit(free, inventory, sheets) {
+    function grooveEdges(piece) {
+      if (!piece.grooved) return null;
+      if (piece.rotated) return {top:"groove",right:"groove",bottom:"tongue",left:"tongue"};
+      return {top:"groove",right:"tongue",bottom:"tongue",left:"groove"};
+    }
+    function groovesCompatible(candidate, placed) {
+      if (!candidate.grooved) return true;
+      for (const neighbor of placed) {
+        if (!neighbor.grooved) continue;
+        const ca=candidate.x;
+        const cb=candidate.y;
+        const cw=candidate.width;
+        const ch=candidate.height;
+        if (Math.abs(neighbor.x+neighbor.width-ca)<0.001 && neighbor.y<cb+ch && neighbor.y+neighbor.height>cb) {
+          if (grooveEdges(neighbor).right===grooveEdges(candidate).left) return false;
+        }
+        if (Math.abs(ca+cw-neighbor.x)<0.001 && neighbor.y<cb+ch && neighbor.y+neighbor.height>cb) {
+          if (grooveEdges(neighbor).left===grooveEdges(candidate).right) return false;
+        }
+        if (Math.abs(neighbor.y+neighbor.height-cb)<0.001 && neighbor.x<ca+cw && neighbor.x+neighbor.width>ca) {
+          if (grooveEdges(neighbor).bottom===grooveEdges(candidate).top) return false;
+        }
+        if (Math.abs(cb+ch-neighbor.y)<0.001 && neighbor.x<ca+cw && neighbor.x+neighbor.width>ca) {
+          if (grooveEdges(neighbor).top===grooveEdges(candidate).bottom) return false;
+        }
+      }
+      return true;
+    }
+    function findBestFit(free, inventory, sheets, placed) {
       let best=null;
       for (const [fi,f] of free.entries()) {
         for (let ii=0;ii<inventory.length;ii++) {
@@ -160,6 +194,9 @@
           for (const o of orientations(p)) {
             if (o.width<=0||o.height<=0) continue;
             const target={width:Math.min(o.width,f.width),height:Math.min(o.height,f.height)};
+            if (p.grooved && (o.width>f.width||o.height>f.height)) continue;
+            const candidate={x:f.x,y:f.y,width:target.width,height:target.height,grooved:p.grooved,rotated:o.rotated};
+            if (!groovesCompatible(candidate,placed)) continue;
             const score=-target.width*target.height+(f.width-target.width)*(f.height-target.height)*.001;
             if (!best||score<best.score) best={type:"sheet",fi,free:f,piece:o,target,sheet:p,score};
           }
@@ -184,7 +221,7 @@
       return residual.filter(r=>usable(r,params));
     }
     function calculate(data) {
-      const sheets=(data.sheets||[]).map(s=>({name:s.name||"",width:positive(s.width),height:positive(s.height)})).filter(s=>s.width&&s.height);
+      const sheets=(data.sheets||[]).map(s=>({name:s.name||"",width:positive(s.width),height:positive(s.height),orientation:s.orientation||"any",grooved:s.grooved===true})).filter(s=>s.width&&s.height);
       const areas=(data.areas||[]).flatMap(a=>{
         const w=positive(a.width),h=positive(a.height),q=Math.max(1,Math.floor(Number(a.quantity)||1));
         if (!w||!h) return [];
@@ -197,7 +234,7 @@
         let free=[{x:0,y:0,width:area.width,height:area.height}], placed=[];
         let guard=0;
         while (free.length&&guard++<10000) {
-          const fit=findBestFit(free,inventory,sheets);
+          const fit=findBestFit(free,inventory,sheets,placed);
           if (!fit) break;
           const f=fit.free;
           if (fit.type==="offcut") {
@@ -220,7 +257,7 @@
             const source=fit.sheet;
             const sourceNumber=nextSheet++;
             const target={width:fit.target.width,height:fit.target.height};
-            placed.push({x:f.x,y:f.y,width:target.width,height:target.height,sourceNumber,reused:false,name:source.name||""});
+            placed.push({x:f.x,y:f.y,width:target.width,height:target.height,sourceNumber,reused:false,name:source.name||"",grooved:source.grooved===true,rotated:fit.piece.rotated===true});
             let record=sheetRecords.find(r=>r.number===sourceNumber);
             if (!record) { record={number:sourceNumber,width:source.width,height:source.height,name:source.name||"",used:[],unused:[]}; sheetRecords.push(record); }
             record.used.push(`${target.width} x ${target.height}`);
@@ -229,7 +266,7 @@
             if (rightW>0&&target.height>=params.minHeight) residuals.push({width:rightW,height:target.height,sourceNumber,sourceName:"likutis"});
             const bottomH=fit.piece.height-target.height;
             if (bottomH>0&&fit.piece.width>=params.minWidth) residuals.push({width:fit.piece.width,height:bottomH,sourceNumber,sourceName:"likutis"});
-            for (const r of residuals) if (usable(r,params)) inventory.push(r); else record.unused.push(`${r.width} x ${r.height}`);
+            for (const r of residuals) if (!source.grooved&&usable(r,params)) inventory.push(r); else record.unused.push(`${r.width} x ${r.height}`);
             free.splice(fit.fi,1,...splitFree(f,target));
           }
         }
@@ -260,7 +297,7 @@
       const unit=document.getElementById("unit").value;
       const sheets=[...document.querySelectorAll("#sheetRows .row")].map(row=>{
         const ins=row.querySelectorAll("input");
-        return {name:ins[0].value,width:Number(ins[1].value),height:Number(ins[2].value)};
+        return {name:ins[0].value,width:Number(ins[1].value),height:Number(ins[2].value),orientation:row.querySelector("select").value,grooved:ins[3].checked};
       });
       const areas=[...document.querySelectorAll("#areaRows .row")].map(row=>{
         const ins=row.querySelectorAll("input");
@@ -271,12 +308,16 @@
     function saveData(data) { try{localStorage.setItem(STORE_KEY,JSON.stringify(data));}catch(e){} }
     function loadData() { try{const v=JSON.parse(localStorage.getItem(STORE_KEY)||"null");return v&&typeof v==="object"?v:clone(DEFAULT);}catch(e){return clone(DEFAULT);} }
     function fmt(n,unit="mm") { if (!Number.isFinite(n)) return "0"; const v=unit==="cm"?n/10:n; return String(Math.round(v*100)/100).replace(".",","); }
-    function fmtArea(n,unit="mm") { if (!Number.isFinite(n)) return "0"; const v=unit==="cm"?n/100:n; return String(Math.round(v*100)/100).replace(".",","); }
-    function createSheetRow(s={name:"",width:1200,height:2400}) {
-      const row=document.createElement("div");row.className="row";
-      row.innerHTML=`<input class="name" type="text" value="${s.name||""}" aria-label="Lapo pavadinimas" placeholder="Pavadinimas (nebūtina)"><input type="number" value="${s.width}" aria-label="Lapo plotis"><input type="number" value="${s.height}" aria-label="Lapo aukštis"><button type="button" aria-label="Šalinti lapą">×</button>`;
+    function areaToM2(n,unit="mm") { if (!Number.isFinite(n)) return 0; return unit==="cm"?n/10000:n/1000000; }
+    function fmtArea(n,unit="mm") { const v=areaToM2(n,unit); return String(Math.round(v*100)/100).replace(".",","); }
+    function createSheetRow(s={name:"",width:1200,height:2400,orientation:"any",grooved:false}) {
+      const row=document.createElement("div");row.className="row sheet-row";
+      const orientation=s.orientation||"any";
+      const grooved=s.grooved===true?"checked":"";
+      row.innerHTML=`<input class="name" type="text" value="${s.name||""}" aria-label="Lapo pavadinimas" placeholder="Pavadinimas (nebūtina)"><input type="number" value="${s.width}" aria-label="Lapo plotis"><input type="number" value="${s.height}" aria-label="Lapo aukštis"><select aria-label="Pageidaujama orientacija"><option value="any"${orientation==="any"?" selected":""}>Bet kuria</option><option value="horizontal"${orientation==="horizontal"?" selected":""}>Horizontali</option><option value="vertical"${orientation==="vertical"?" selected":""}>Vertikali</option></select><label class="groove-check" title="Grotuotas lapas"><input type="checkbox" aria-label="Grotuotas lapas" ${grooved}></label><button type="button" aria-label="Šalinti lapą">×</button>`;
       row.querySelector("button").addEventListener("click",()=>{row.remove();render();});
       row.querySelectorAll("input").forEach(i=>i.addEventListener("change",render));
+      row.querySelector("select").addEventListener("change",render);
       document.getElementById("sheetRows").appendChild(row);
     }
     function createAreaRow(a={name:"",width:900,height:600,quantity:1}) {
@@ -291,7 +332,8 @@
         <div class="metric"><strong>${result.fullSheets}</strong> pilni lapai</div>
         <div class="metric"><strong>${result.reusedCount}</strong> panaudoti likučiai</div>
         <div class="metric"><strong>${fmt(result.wastePercent)} %</strong> atliekos</div>
-        <div class="metric"><strong>${fmtArea(result.covered,data.unit)} ${data.unit}²</strong> uždengtas plotas</div>`;
+        <div class="metric"><strong>${fmtArea(result.covered,data.unit)} m²</strong> uždengtas plotas</div>
+        <div class="metric"><strong>${fmtArea(result.reusableArea,data.unit)} m²</strong> liko naudoti likučiai</div>`;
     }
     function renderLayout(result,data) {
       const layout=document.getElementById("layout");layout.innerHTML="";
@@ -309,8 +351,8 @@
           const el=document.createElement("div");el.className="piece"+(p.reused?" reused":"");
           el.style.left=(p.x*scale)+"px";el.style.top=(p.y*scale)+"px";el.style.width=(p.width*scale)+"px";el.style.height=(p.height*scale)+"px";
           el.style.background=COLORS[(p.sourceNumber-1)%COLORS.length];
-          el.title=`#${p.sourceNumber} · ${fmt(p.width,data.unit)} x ${fmt(p.height,data.unit)} ${data.unit}${p.reused?" · likutis":""}`;
-          el.innerHTML=`#${p.sourceNumber}<small>${fmt(p.width,data.unit)} x ${fmt(p.height,data.unit)}${p.reused?" · likutis":""}</small>`;
+          el.title=`#${p.sourceNumber} · ${fmt(p.width,data.unit)} x ${fmt(p.height,data.unit)} ${data.unit}${p.reused?" · likutis":""}${p.grooved?" · grioveliuotas":""}`;
+          el.innerHTML=`#${p.sourceNumber}<small>${fmt(p.width,data.unit)} x ${fmt(p.height,data.unit)}${p.reused?" · likutis":""}${p.grooved?" · griovel.":""}</small>`;
           canvas.appendChild(el);
         }
         for (const u of area.uncovered) {
@@ -329,7 +371,7 @@
         return `<tr><td>#${r.number}${r.name?" · "+r.name:""}</td><td>${r.used.join(", ")||"—"}</td><td>${unused}</td><td>${reused?"Panaudota likučiai: "+reused:"Tik pilni lapas"}</td></tr>`;
       }).join(""):`<tr><td colspan="4" class="warn">Nėra tinkamo lapo arba plotas neužpildytas.</td></tr>`;
       document.getElementById("warnings").innerHTML=result.warnings.length?`<p class="warn">${result.warnings.join("<br>")}</p>`:
-        `<p>Likutis: <strong>${fmtArea(result.reusableArea,data.unit)} ${data.unit}²</strong>; atmestos dalys: <strong>${fmtArea(result.discarded,data.unit)} ${data.unit}²</strong>.</p>`;
+        `<p>Likęs naudoti: <strong>${fmtArea(result.reusableArea,data.unit)} m²</strong>; atmestos dalys: <strong>${fmtArea(result.discarded,data.unit)} m²</strong>.</p>`;
     }
     let renderTimer;
     function render() {
@@ -381,7 +423,7 @@
       document.getElementById("copyJsonBtn").addEventListener("click",async()=>{await navigator.clipboard.writeText(document.getElementById("jsonText").value);toast("JSON nukopijuotas");});
       document.getElementById("importJsonBtn").addEventListener("click",()=>{try{const v=JSON.parse(document.getElementById("jsonText").value);setFromData(v);render();dialog.close();toast("Duomenys įkelti");}catch(e){toast("Netinkamas JSON");}});
     }
-    globalThis.SheetLayoutApi={calculate,usable,orientations,splitFree,splitSheetResidual,DEFAULT,readData};
+    globalThis.SheetLayoutApi={calculate,usable,orientations,grooveEdges,groovesCompatible,splitFree,splitSheetResidual,DEFAULT,readData,areaToM2};
   </script>
 </body>
 </html>
