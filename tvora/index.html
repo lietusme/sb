@@ -541,7 +541,12 @@ function render() {
     const grp = el('g', { 'data-ref': l.ref, 'data-tag': l.tag });
     const info = rowsByTag.get(l.tag);
     const dims = `${l.gate ? 'VARTAI ' : ''}W${l.len}xH${l.h}`;
-    const pieces = info ? `(${info.front}+${info.back})x${info.pl}` : '';
+    const edgeCount = info ? (info.cutFront > 0 ? 1 : 0) + (info.cutBack > 0 ? 1 : 0) : 0;
+    const pieces = info
+      ? edgeCount > 0
+        ? `(${info.front}+${info.back}+${edgeCount})x${info.pl}`
+        : `(${info.front}+${info.back})x${info.pl}`
+      : '';
     if (l.horiz) {
       // every second label of a run moves outward, with a thin leader to its segment, so neighbours do not collide
       const far = Number(l.ref.split(',')[2]) % 2 === 1;
@@ -973,8 +978,10 @@ function renderCalc() {
     sumCount += r.count;
     const spare = r.count > r.base ? ` (+${r.count - r.base})` : '';
     const edgeWidth = r.edgeWidth > 0 ? String(r.edgeWidth) : '–';
+    const edgeCount = (r.cutFront > 0 ? 1 : 0) + (r.cutBack > 0 ? 1 : 0);
+    const detailCount = edgeCount > 0 ? `${r.front}+${r.back}+${edgeCount}` : `${r.front}+${r.back}`;
     seg += `<tr><td><b>${r.tag}</b>${r.gate ? ' <span class="gate">vartai</span>' : ''}</td>` +
-      `<td>${r.len}</td><td>${r.h}</td><td>${r.pl}</td><td data-num="${r.count}">${r.front}+${r.back}${spare}</td>` +
+      `<td>${r.len}</td><td>${r.h}</td><td>${r.pl}</td><td data-num="${r.count}">${detailCount}${spare}</td>` +
       `<td class="${c.edgeCut ? '' : 'hidden-edge-col'}">${edgeWidth}</td>` +
       `<td class="${r.gap < 0 ? 'bad' : ''}">${r.gap.toFixed(0)}</td>` +
       `<td class="${r.offTarget ? 'bad' : ''}">${isNaN(r.overlap) ? '–' : r.overlap.toFixed(0)}</td></tr>`;
@@ -1176,7 +1183,7 @@ function renderPrintSegments() {
     info.innerHTML =
       `<strong>${s.tag}${s.gate ? ' · Vartai' : ''}</strong><br>` +
       `Ilgis: ${s.len} mm<br>Detalės aukštis: ${row ? row.pl : s.h - c.topGap - c.bottomGap} mm<br>` +
-      `Detalių: ${row ? row.count : 0} (${row ? row.front : 0}+${row ? row.back : 0})<br>` +
+      `Detalių: ${row ? row.count : 0} (${row ? ((row.cutFront > 0 ? 1 : 0) + (row.cutBack > 0 ? 1 : 0) > 0 ? `${row.front}+${row.back}+${(row.cutFront > 0 ? 1 : 0) + (row.cutBack > 0 ? 1 : 0)}` : `${row.front}+${row.back}`) : '0+0'})<br>` +
       `Tarpas: ${row ? row.gap.toFixed(0) : '–'} mm · Persidengimas: ${row ? row.overlap.toFixed(0) : '–'} mm<br>` +
       `${edge}`;
     tr.appendChild(drawing);
@@ -1303,7 +1310,9 @@ function drawSegment(svg, s, fs) {
   const mid = (x0 + x1) / 2;
   svg.appendChild(el('text', { x: mid, y: dy, 'data-off': 1.8, 'font-size': fs, 'font-weight': 700, 'text-anchor': 'middle', fill: '#111', 'font-family': 'Arial' }, `${s.len}${s.gate ? ' · vartai' : ''}`));
   const pieceHeight = s.exactHeight ? s.h : s.h - c.topGap - c.bottomGap;
-  svg.appendChild(el('text', { x: mid, y: dy, 'data-off': 3.6, 'font-size': fs, 'text-anchor': 'middle', fill: '#555', 'font-family': 'Arial' }, `Detalės aukštis ${pieceHeight} · detalių ${fit.front}+${fit.back}`));
+  const edgeCount = (fit.cutFront > 0 ? 1 : 0) + (fit.cutBack > 0 ? 1 : 0);
+  const detailCount = edgeCount > 0 ? `${fit.front}+${fit.back}+${edgeCount}` : `${fit.front}+${fit.back}`;
+  svg.appendChild(el('text', { x: mid, y: dy, 'data-off': 3.6, 'font-size': fs, 'text-anchor': 'middle', fill: '#555', 'font-family': 'Arial' }, `Detalės aukštis ${pieceHeight} · detalių ${detailCount}`));
   let edgeInfo = '';
   if (fit.edgeMode) {
     if (fit.cutFront > 0 && fit.cutBack > 0) edgeInfo = ` · Kraštinės ${fit.cutFront}+${fit.cutBack} mm`;
