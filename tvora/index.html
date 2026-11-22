@@ -212,6 +212,7 @@
         <input type="number" id="cOverlap" min="0" max="200" step="1" value="20">
       </label>
       <label class="toggle-row"><input type="checkbox" id="cEdgeCut"> Apkarpyti kraštines lentas</label>
+      <label>Mažiausias pjautos lentos plotis, mm <input type="number" id="cEdgeMinWidth" value="30" step="1"></label>
     </div>
     <h3 class="sub-h">Medžiagos</h3>
     <div class="prow">
@@ -571,7 +572,7 @@ dlg.addEventListener('close', () => {
   render();
 });
 
-const CALC_IDS = { topGap: 'cTop', bottomGap: 'cBottom', overlap: 'cOverlap', thick: 'cThick', width: 'cWidth', stock: 'cStock', trim: 'cTrim', kerf: 'cKerf', spare: 'cSpare', price: 'cPrice' };
+const CALC_IDS = { topGap: 'cTop', bottomGap: 'cBottom', overlap: 'cOverlap', thick: 'cThick', width: 'cWidth', stock: 'cStock', trim: 'cTrim', kerf: 'cKerf', spare: 'cSpare', price: 'cPrice', edgeMinWidth: 'cEdgeMinWidth' };
 
 function readCalc() {
   const c = {};
@@ -669,6 +670,7 @@ function chooseBoards(s, c) {
 
 function edgeFit(s, c) {
   const d = DATA.dimensions;
+  const minEdge = Math.max(1, c.edgeMinWidth || 1);
   const innerRight = s.len - insetOf(s.endJoint, d);
   const insetLeft = insetOf(s.startJoint, d);
   const pitch = 2 * c.width - c.overlap;
@@ -690,7 +692,7 @@ function edgeFit(s, c) {
       x += pitch;
     }
     const residual = innerRight - x;
-    const cutWidth = residual > 1e-6 && residual < c.width
+    const cutWidth = residual >= minEdge && residual < c.width
       ? Math.round(residual)
       : 0;
     return { count, cutWidth };
