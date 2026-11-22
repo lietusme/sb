@@ -746,6 +746,9 @@ function edgeFit(s, c) {
   };
   const frontFit = fitFace(0);
   const backFit = fitFace(pitch / 2);
+  if (frontFit.cutWidth === 0 && backFit.cutWidth === 0) {
+    return null;
+  }
   const edgeWidth = Math.max(frontFit.cutWidth, backFit.cutWidth);
   const front = frontFit.count + (frontFit.cutWidth > 0 ? 1 : 0);
   const back = backFit.count + (backFit.cutWidth > 0 ? 1 : 0);
