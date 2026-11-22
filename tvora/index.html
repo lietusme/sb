@@ -1037,7 +1037,7 @@ function renderCalc() {
     }
     return parts.join(' + ');
   };
-  let cut = '<tr><th>Pjūvis, mm</th><th>Lentų</th><th>Segmentai</th><th>Lentos likutis, mm</th></tr>';
+  let cut = '<tr><th>Detalės, mm</th><th>Lentų</th><th>Segmentai</th><th>Lentos likutis, mm</th></tr>';
   sortedGroups.forEach(g => {
     const tags = [...g.tags].sort(tagCmp).join(', ');
     const cutLabel = g.widthKey === 'kraštinės'
