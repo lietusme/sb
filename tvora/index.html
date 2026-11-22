@@ -612,6 +612,33 @@ function boardFit(s, total, c) {
   return { span, spacing, pitch: 2 * spacing, gap: 2 * spacing - c.width, overlap: 2 * c.width - 2 * spacing };
 }
 
+function faceBoards(s, fit, c) {
+  const d = DATA.dimensions;
+  const insetL = insetOf(s.startJoint, d);
+  const innerRight = s.len - insetOf(s.endJoint, d);
+  const out = [[], []];
+  if (fit.edgeMode) {
+    for (let face = 0; face < 2; face++) {
+      const stagger = face === 0 ? 0 : fit.spacing;
+      const count = face === 0 ? fit.cutFrontCount : fit.cutBackCount;
+      let x = insetL + stagger;
+      for (let i = 0; i < count; i++) {
+        out[face].push({ x, width: c.width, edge: false });
+        x += fit.pitch;
+      }
+      const cutWidth = face === 0 ? fit.cutFront : fit.cutBack;
+      if (cutWidth > 0) out[face].push({ x: innerRight - cutWidth, width: cutWidth, edge: true });
+    }
+  } else {
+    for (let k = 0; k < fit.total; k++) {
+      const face = k % 2;
+      const i = Math.floor(k / 2);
+      out[face].push({ x: insetL + i * fit.pitch, width: c.width, edge: false });
+    }
+  }
+  return out;
+}
+
 // Board count per segment for the target overlap (c.overlap):
 //   Chooses the total whose overlap is closest to the target. Totals where boards would touch
 //   (gap ≤ 0) are skipped. On a tie an even total (equal boards on both faces) is preferred.
@@ -627,11 +654,17 @@ function chooseBoards(s, c) {
     if (f.gap <= 0) continue;
     cands.push({ total, ...f, dist: Math.abs(f.overlap - c.overlap) });
   }
-  if (!cands.length) return { total: 2, front: 1, back: 1, span: boardFit(s, 2, c).span, spacing: NaN, pitch: NaN, gap: NaN, overlap: NaN, alts: [] };
+  if (!cands.length) {
+    const fit = { total: 2, front: 1, back: 1, span: boardFit(s, 2, c).span, spacing: NaN, pitch: NaN, gap: NaN, overlap: NaN, edgeMode: false, alts: [] };
+    fit.faceBoards = faceBoards(s, fit, c);
+    return fit;
+  }
   const best = cands.reduce((b, x) => (x.dist < b.dist - 1e-9 || (Math.abs(x.dist - b.dist) <= 1e-9 && x.total % 2 === 0 && b.total % 2 === 1) ? x : b));
   const alts = cands.filter(x => x.total !== best.total && Math.abs(x.total - best.total) <= 2 && x.overlap > 0)
     .map(x => ({ front: Math.ceil(x.total / 2), back: Math.floor(x.total / 2), overlap: x.overlap }));
-  return { ...best, front: Math.ceil(best.total / 2), back: Math.floor(best.total / 2), alts };
+  const fit = { ...best, front: Math.ceil(best.total / 2), back: Math.floor(best.total / 2), alts, edgeMode: false };
+  fit.faceBoards = faceBoards(s, fit, c);
+  return fit;
 }
 
 function edgeFit(s, c) {
@@ -640,8 +673,11 @@ function edgeFit(s, c) {
   const insetLeft = insetOf(s.startJoint, d);
   const pitch = 2 * c.width - c.overlap;
   if (pitch <= c.width) {
-    return { total: 2, front: 1, back: 1, span: innerRight - insetLeft, spacing: pitch / 2,
-      pitch, gap: pitch - c.width, overlap: c.overlap, edgeWidth: 0, edgeMode: false, alts: [] };
+    const fit = { total: 2, front: 1, back: 1, span: innerRight - insetLeft, spacing: pitch / 2,
+      pitch, gap: pitch - c.width, overlap: c.overlap, edgeWidth: 0, cutFront: 0, cutBack: 0,
+      cutFrontCount: 0, cutBackCount: 0, edgeMode: false, alts: [] };
+    fit.faceBoards = faceBoards(s, fit, c);
+    return fit;
   }
   const spacing = pitch / 2;
   const gap = pitch - c.width;
@@ -665,7 +701,7 @@ function edgeFit(s, c) {
   const front = frontFit.count + (frontFit.cutWidth > 0 ? 1 : 0);
   const back = backFit.count + (backFit.cutWidth > 0 ? 1 : 0);
   const total = front + back;
-  return {
+  const fit = {
     span,
     spacing,
     pitch,
@@ -678,9 +714,13 @@ function edgeFit(s, c) {
     edgeWidth,
     cutFront: frontFit.cutWidth,
     cutBack: backFit.cutWidth,
+    cutFrontCount: frontFit.count,
+    cutBackCount: backFit.count,
     edgeMode: edgeWidth > 0,
     alts: []
   };
+  fit.faceBoards = faceBoards(s, fit, c);
+  return fit;
 }
 
 function calculate(c) {
@@ -694,19 +734,25 @@ function calculate(c) {
     const offTarget = Number.isFinite(fc.overlap) && (fc.overlap > 1.5 * c.overlap || fc.overlap < 0.5 * c.overlap);
     return { ...s, pl, base, count, front: fc.front, back: fc.back, gap: fc.gap, overlap: fc.overlap,
       edgeWidth: fc.edgeWidth || 0, cutFront: fc.cutFront || 0, cutBack: fc.cutBack || 0,
-      edgeMode: !!fc.edgeMode, offTarget, alts: fc.alts };
+      edgeMode: !!fc.edgeMode, faceBoards: fc.faceBoards, offTarget, alts: fc.alts };
   });
   const pieces = [];
   rows.forEach(r => {
-    if (!c.edgeCut || !r.edgeMode) {
-      for (let i = 0; i < r.count; i++) pieces.push({ name: r.tag, len: r.pl });
-      return;
+    let boardPieces = 0;
+    for (const face of r.faceBoards || []) {
+      for (const board of face) {
+        pieces.push({
+          name: r.tag,
+          len: r.pl,
+          edge: !!board.edge,
+          width: board.width
+        });
+        boardPieces++;
+      }
     }
-    const edgeCount = (r.cutFront > 0 ? 1 : 0) + (r.cutBack > 0 ? 1 : 0);
-    const fullCount = Math.max(0, r.count - edgeCount);
-    for (let i = 0; i < fullCount; i++) pieces.push({ name: r.tag, len: r.pl, edge: false, width: c.width });
-    if (r.cutFront > 0) pieces.push({ name: r.tag, len: r.pl, edge: true, width: r.cutFront, face: 'front' });
-    if (r.cutBack > 0) pieces.push({ name: r.tag, len: r.pl, edge: true, width: r.cutBack, face: 'back' });
+    for (let i = boardPieces; i < r.count; i++) {
+      pieces.push({ name: r.tag, len: r.pl, edge: false, width: c.width });
+    }
   });
   pieces.sort((a, b) => b.len - a.len || byName(a, b));
 
@@ -1105,47 +1151,14 @@ function drawSegment(svg, s, fs) {
   const half = cb.width / 2;
   const faceY = [-half - t, half];
   const insetL = insetOf(s.startJoint, d), insetR = insetOf(s.endJoint, d);
-  if (fit.edgeMode) {
-    for (let face = 0; face < 2; face++) {
-      const count = face === 0 ? fit.front : fit.back;
-      const innerRight = L - insetR;
-      const staggerOffset = face === 0 ? 0 : fit.spacing;
-      for (let i = 0; i < count; i++) {
-        const x = insetL + staggerOffset + i * fit.pitch;
-        const edgeWidth = face === 0 ? fit.cutFront : fit.cutBack;
-        if (edgeWidth > 0 && i === count - 1) {
-          svg.appendChild(el('rect', {
-            x: innerRight - edgeWidth,
-            y: faceY[face],
-            width: edgeWidth,
-            height: t,
-            fill: '#e8d5b5',
-            stroke: boardStroke,
-            'stroke-width': 5
-          }));
-          continue;
-        }
-        if (x + cw > innerRight + 1e-6) continue;
-        svg.appendChild(el('rect', {
-          x,
-          y: faceY[face],
-          width: cw,
-          height: t,
-          fill: '#f3e6cf',
-          stroke: boardStroke,
-          'stroke-width': 5
-        }));
-      }
-    }
-  } else {
-    for (let k = 0; k < fit.total; k++) {
-      const x = insetL + k * fit.spacing;
+  for (let face = 0; face < 2; face++) {
+    for (const board of fit.faceBoards[face] || []) {
       svg.appendChild(el('rect', {
-        x,
-        y: faceY[k % 2],
-        width: cw,
+        x: board.x,
+        y: faceY[face],
+        width: board.width,
         height: t,
-        fill: '#f3e6cf',
+        fill: board.edge ? '#e8d5b5' : '#f3e6cf',
         stroke: boardStroke,
         'stroke-width': 5
       }));
