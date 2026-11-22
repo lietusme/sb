@@ -66,6 +66,7 @@
   .plan-title { font-size: 12px; margin: 0; color: #1f2a33; font-family: Arial, sans-serif; }
   .plan-title.changed { color: #b5651d; }
   body:not(.print-view) tr.hl td { background: #d6e8f7; font-weight: 700; }
+  .hidden-edge-col { display: none; }
   body:not(.print-view) #plan line.hl-fill { stroke: #d6e8f7; }
   body:not(.print-view) #plan text.hl, body:not(.print-view) #plan text.hl tspan { fill: #1f6fb2; }
   .plan-sub { margin: 4px 0 0; color: #555; font-size: 12px; }
@@ -211,7 +212,6 @@
         <input type="number" id="cOverlap" min="0" max="200" step="1" value="20">
       </label>
       <label class="toggle-row"><input type="checkbox" id="cEdgeCut"> Apkarpyti kraštines lentas</label>
-      <label>Mažiausias pjautos lentos plotis, mm <input type="number" id="cEdgeMinWidth" value="30" step="1"></label>
     </div>
     <h3 class="sub-h">Medžiagos</h3>
     <div class="prow">
@@ -571,7 +571,7 @@ dlg.addEventListener('close', () => {
   render();
 });
 
-const CALC_IDS = { topGap: 'cTop', bottomGap: 'cBottom', overlap: 'cOverlap', thick: 'cThick', width: 'cWidth', stock: 'cStock', trim: 'cTrim', kerf: 'cKerf', spare: 'cSpare', price: 'cPrice', edgeMinWidth: 'cEdgeMinWidth' };
+const CALC_IDS = { topGap: 'cTop', bottomGap: 'cBottom', overlap: 'cOverlap', thick: 'cThick', width: 'cWidth', stock: 'cStock', trim: 'cTrim', kerf: 'cKerf', spare: 'cSpare', price: 'cPrice' };
 
 function readCalc() {
   const c = {};
@@ -635,43 +635,51 @@ function chooseBoards(s, c) {
 }
 
 function edgeFit(s, c) {
-  const minEdge = Math.max(1, c.edgeMinWidth || 1);
-  const cands = [];
-  for (let total = 2; total <= 600; total++) {
-    const f = boardFit(s, total, c);
-    if (f.gap <= 0) continue;
-    cands.push({ total, ...f, dist: Math.abs(f.overlap - c.overlap) });
-  }
-  if (!cands.length) return { total: 2, front: 1, back: 1, span: boardFit(s, 2, c).span, spacing: NaN, pitch: NaN, gap: NaN, overlap: NaN, edgeWidthFront: 0, edgeWidthBack: 0, edgeMode: false, alts: [] };
-  const best = cands.reduce((b, x) => (x.dist < b.dist - 1e-9 || (Math.abs(x.dist - b.dist) <= 1e-9 && x.total % 2 === 0 && b.total % 2 === 1) ? x : b));
-  const alts = cands.filter(x => x.total !== best.total && Math.abs(x.total - best.total) <= 2 && x.overlap > 0)
-    .map(x => ({ front: Math.ceil(x.total / 2), back: Math.floor(x.total / 2), overlap: x.overlap }));
   const d = DATA.dimensions;
   const innerRight = s.len - insetOf(s.endJoint, d);
   const insetLeft = insetOf(s.startJoint, d);
-  const fitFace = (faceCount, staggerOffset) => {
-    let lastFullRight = insetLeft;
-    for (let i = 0; i < faceCount; i++) {
-      const x = insetLeft + staggerOffset + i * best.pitch;
-      if (x + c.width <= innerRight + 1e-6) lastFullRight = x + c.width;
+  const pitch = 2 * c.width - c.overlap;
+  if (pitch <= c.width) {
+    return { total: 2, front: 1, back: 1, span: innerRight - insetLeft, spacing: pitch / 2,
+      pitch, gap: pitch - c.width, overlap: c.overlap, edgeWidth: 0, edgeMode: false, alts: [] };
+  }
+  const spacing = pitch / 2;
+  const gap = pitch - c.width;
+  const span = innerRight - insetLeft;
+  const fitFace = staggerOffset => {
+    let count = 0;
+    let x = insetLeft + staggerOffset;
+    while (x + c.width <= innerRight + 1e-6) {
+      count++;
+      x += pitch;
     }
-    const remaining = innerRight - lastFullRight;
-    const cutWidth = remaining >= minEdge && remaining < c.width - 1e-6
-      ? Math.round(remaining)
+    const residual = innerRight - x;
+    const cutWidth = residual > 1e-6 && residual < c.width
+      ? Math.round(residual)
       : 0;
-    return { count: faceCount, cutWidth };
+    return { count, cutWidth };
   };
-  const frontFit = fitFace(Math.ceil(best.total / 2), 0);
-  const backFit = fitFace(Math.floor(best.total / 2), best.spacing);
+  const frontFit = fitFace(0);
+  const backFit = fitFace(pitch / 2);
+  const edgeWidth = Math.max(frontFit.cutWidth, backFit.cutWidth);
+  const front = frontFit.count + (frontFit.cutWidth > 0 ? 1 : 0);
+  const back = backFit.count + (backFit.cutWidth > 0 ? 1 : 0);
+  const total = front + back;
   return {
-    ...best,
+    span,
+    spacing,
+    pitch,
+    gap,
+    overlap: c.overlap,
+    dist: 0,
+    total,
     front: frontFit.count,
     back: backFit.count,
-    edgeWidthFront: frontFit.cutWidth,
-    edgeWidthBack: backFit.cutWidth,
-    edgeWidth: Math.max(frontFit.cutWidth, backFit.cutWidth),
-    edgeMode: frontFit.cutWidth > 0 || backFit.cutWidth > 0,
-    alts
+    edgeWidth,
+    cutFront: frontFit.cutWidth,
+    cutBack: backFit.cutWidth,
+    edgeMode: edgeWidth > 0,
+    alts: []
   };
 }
 
@@ -685,7 +693,7 @@ function calculate(c) {
     // warned when the overlap is more than 50 % above or below the target
     const offTarget = Number.isFinite(fc.overlap) && (fc.overlap > 1.5 * c.overlap || fc.overlap < 0.5 * c.overlap);
     return { ...s, pl, base, count, front: fc.front, back: fc.back, gap: fc.gap, overlap: fc.overlap,
-      edgeWidth: fc.edgeWidth, edgeWidthFront: fc.edgeWidthFront || 0, edgeWidthBack: fc.edgeWidthBack || 0,
+      edgeWidth: fc.edgeWidth || 0, cutFront: fc.cutFront || 0, cutBack: fc.cutBack || 0,
       edgeMode: !!fc.edgeMode, offTarget, alts: fc.alts };
   });
   const pieces = [];
@@ -694,11 +702,11 @@ function calculate(c) {
       for (let i = 0; i < r.count; i++) pieces.push({ name: r.tag, len: r.pl });
       return;
     }
-    const edgeCount = (r.edgeWidthFront > 0 ? 1 : 0) + (r.edgeWidthBack > 0 ? 1 : 0);
+    const edgeCount = (r.cutFront > 0 ? 1 : 0) + (r.cutBack > 0 ? 1 : 0);
     const fullCount = Math.max(0, r.count - edgeCount);
     for (let i = 0; i < fullCount; i++) pieces.push({ name: r.tag, len: r.pl, edge: false, width: c.width });
-    if (r.edgeWidthFront > 0) pieces.push({ name: r.tag, len: r.pl, edge: true, width: r.edgeWidthFront, face: 'front' });
-    if (r.edgeWidthBack > 0) pieces.push({ name: r.tag, len: r.pl, edge: true, width: r.edgeWidthBack, face: 'back' });
+    if (r.cutFront > 0) pieces.push({ name: r.tag, len: r.pl, edge: true, width: r.cutFront, face: 'front' });
+    if (r.cutBack > 0) pieces.push({ name: r.tag, len: r.pl, edge: true, width: r.cutBack, face: 'back' });
   });
   pieces.sort((a, b) => b.len - a.len || byName(a, b));
 
@@ -787,6 +795,7 @@ function cmpCells(a, b) {
 
 // Cells with data-num (the Segmentai count) compare by that number.
 function cellCmp(a, b) {
+  if (!a || !b) return 0;
   if (a.dataset.num !== undefined && b.dataset.num !== undefined) return Number(a.dataset.num) - Number(b.dataset.num);
   return cmpCells(a.textContent, b.textContent);
 }
@@ -852,23 +861,21 @@ function renderCalc() {
     }));
 
   let seg = '<tr><th>Segmentas</th><th>Ilgis, mm</th><th>H, mm</th><th>Detalės ilgis, mm</th>' +
-    '<th>Detalių</th>' + (c.edgeCut ? '<th>Kraštinė lenta, mm</th>' : '') +
+    '<th>Detalių</th><th class="' + (c.edgeCut ? '' : 'hidden-edge-col') + '">Kraštinė lenta, mm</th>' +
     '<th>Tarpas, mm</th><th>Persidengimas, mm</th></tr>';
   let sumCount = 0;
   for (const r of rows) {
     sumCount += r.count;
     const spare = r.count > r.base ? ` (+${r.count - r.base})` : '';
-    const edgeWidths = r.edgeWidthFront || r.edgeWidthBack
-      ? `${r.edgeWidthFront ? r.edgeWidthFront.toFixed(r.edgeWidthFront % 1 ? 1 : 0) : '–'} / ${r.edgeWidthBack ? r.edgeWidthBack.toFixed(r.edgeWidthBack % 1 ? 1 : 0) : '–'}`
-      : '–';
+    const edgeWidth = r.edgeWidth > 0 ? String(r.edgeWidth) : '–';
     seg += `<tr><td><b>${r.tag}</b>${r.gate ? ' <span class="gate">vartai</span>' : ''}</td>` +
       `<td>${r.len}</td><td>${r.h}</td><td>${r.pl}</td><td data-num="${r.count}">${r.front}+${r.back}${spare}</td>` +
-      (c.edgeCut ? `<td>${edgeWidths}</td>` : '') +
+      `<td class="${c.edgeCut ? '' : 'hidden-edge-col'}">${edgeWidth}</td>` +
       `<td class="${r.gap < 0 ? 'bad' : ''}">${r.gap.toFixed(0)}</td>` +
       `<td class="${r.offTarget ? 'bad' : ''}">${isNaN(r.overlap) ? '–' : r.overlap.toFixed(0)}</td></tr>`;
   }
   seg += `<tr class="tot"><td>Iš viso</td><td></td><td></td><td></td><td>${sumCount}</td>` +
-    (c.edgeCut ? '<td></td>' : '') + '<td></td><td></td></tr>';
+    `<td class="${c.edgeCut ? '' : 'hidden-edge-col'}"></td><td></td><td></td></tr>`;
   document.getElementById('segTbl').innerHTML = seg;
 
   const groups = new Map();
@@ -1105,7 +1112,7 @@ function drawSegment(svg, s, fs) {
       const staggerOffset = face === 0 ? 0 : fit.spacing;
       for (let i = 0; i < count; i++) {
         const x = insetL + staggerOffset + i * fit.pitch;
-        const edgeWidth = face === 0 ? fit.edgeWidthFront : fit.edgeWidthBack;
+        const edgeWidth = face === 0 ? fit.cutFront : fit.cutBack;
         if (edgeWidth > 0 && i === count - 1) {
           svg.appendChild(el('rect', {
             x: innerRight - edgeWidth,
