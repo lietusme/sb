@@ -948,17 +948,13 @@ function renderCalc() {
     }
     return parts.join(' + ');
   };
-  let cut = '<tr><th>Pjūvis, mm</th><th>Lentų</th><th>Segmentai</th>' +
-    (c.edgeCut ? '<th>Lik. ilgis / plotis, mm</th>' : '<th>Lentos likutis, mm</th>') +
-    '</tr>';
+  let cut = '<tr><th>Pjūvis, mm</th><th>Lentų</th><th>Segmentai</th><th>Lentos likutis, mm</th></tr>';
   sortedGroups.forEach(g => {
     const tags = [...g.tags].sort(tagCmp).join(', ');
     const cutLabel = g.widthKey === 'kraštinės'
       ? `${fmtPieces(g.lens)} (kraštinė ${g.widths[0]} mm)`
       : fmtPieces(g.lens);
-    const remLabel = c.edgeCut && g.widthKey === 'kraštinės'
-      ? `${g.rem} / ${g.remWidth}`
-      : `${g.rem}`;
+    const remLabel = `${g.rem}`;
     cut += `<tr><td>${cutLabel}</td><td>${g.count}</td><td class="wrapcell" data-num="${g.tags.size}">${tags}</td>` +
       `<td class="${g.rem < 0 || g.remWidth < 0 ? 'bad' : ''}">${remLabel}</td></tr>`;
   });
@@ -973,8 +969,12 @@ function renderCalc() {
   const trimT = N * c.trim;
   const kerfT = boards.reduce((s, b) => s + Math.max(0, b.items.length - 1) * c.kerf, 0);
   const remT = boards.reduce((s, b) => s + b.rem, 0);
+  const edgeRemWidthT = c.edgeCut
+    ? boards.filter(b => b.edgeBoard).reduce((s, b) => s + b.remWidth, 0)
+    : 0;
+  const edgeRemM3 = edgeRemWidthT * c.thick * c.stock / 1e9;
   const totalLen = N * c.stock;
-  const unusedPct = (trimT + kerfT + remT) / totalLen * 100;
+  const unusedPct = (trimT + kerfT + remT + edgeRemWidthT * c.thick) / totalLen * 100;
 
   document.getElementById('sum').innerHTML =
     `<div class="sumline">` +
@@ -988,7 +988,8 @@ function renderCalc() {
     `<div class="sumline">` +
     `<b>Galų nuostolis:</b> ${(trimT / 1000).toFixed(2)} m<br>` +
     `<b>Pjūviai:</b> ${(kerfT / 1000).toFixed(2)} m<br>` +
-    `<b>Liekanos:</b> ${(remT / 1000).toFixed(2)} m<br>` +
+    `<b>Pilno pločio liekanos:</b> ${(remT / 1000).toFixed(2)} m<br>` +
+    (c.edgeCut ? `<b>Kraštinių liekanos tūris:</b> ${edgeRemM3.toFixed(3)} m³<br>` : '') +
     `<b>Nepanaudota:</b> ${unusedPct.toFixed(1)}%` +
     `</div>`;
 }
