@@ -76,7 +76,7 @@
   .grid, .prow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 16px; margin-bottom: 10px; }
   .prow label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
   .prow input { padding: 4px; font-size: 12px; width: 100%; box-sizing: border-box; }
-  .toggle-row { display: flex; align-items: center; gap: 8px; }
+  .prow .toggle-row { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 8px; }
   .toggle-row input { width: auto; }
   .split { display: flex; align-items: center; gap: 8px; width: 100%; }
   .split input[type=number] { flex: 1 1 0; min-width: 0; width: auto; }
@@ -210,6 +210,8 @@
       <label>Persidengimas, mm
         <input type="number" id="cOverlap" min="0" max="200" step="1" value="20">
       </label>
+      <label class="toggle-row"><input type="checkbox" id="cEdgeCut"> Apkarpyti kraštines lentas</label>
+      <label>Mažiausias pjautos lentos plotis, mm <input type="number" id="cEdgeMinWidth" value="30" step="1"></label>
     </div>
     <h3 class="sub-h">Medžiagos</h3>
     <div class="prow">
@@ -217,8 +219,6 @@
       <label>Lentos plotis, mm <input type="number" id="cWidth" value="103" step="1"></label>
       <label>Lentos ilgis (sandėlyje), mm <input type="number" id="cStock" value="5400" step="10"></label>
       <label>Kaina, EUR/m³ be PVM <input type="number" id="cPrice" value="310" step="1"></label>
-      <label class="toggle-row"><input type="checkbox" id="cEdgeCut"> Apkarpyti kraštines lentas</label>
-      <label>Mažiausias pjautos lentos plotis, mm <input type="number" id="cEdgeMinWidth" value="30" step="1"></label>
     </div>
     <h3 class="sub-h">Likučiai</h3>
     <div class="prow">
@@ -636,19 +636,41 @@ function chooseBoards(s, c) {
 
 function edgeFit(s, c) {
   const minEdge = Math.max(1, c.edgeMinWidth || 1);
-  const edgeWidth = c.width / 2;
-  if (edgeWidth < minEdge) return null;
   const cands = [];
   for (let total = 2; total <= 600; total++) {
     const f = boardFit(s, total, c);
     if (f.gap <= 0) continue;
     cands.push({ total, ...f, dist: Math.abs(f.overlap - c.overlap) });
   }
-  if (!cands.length) return { total: 2, front: 1, back: 1, span: boardFit(s, 2, c).span, spacing: NaN, pitch: NaN, gap: NaN, overlap: NaN, edgeWidth, edgeMode: true, alts: [] };
+  if (!cands.length) return { total: 2, front: 1, back: 1, span: boardFit(s, 2, c).span, spacing: NaN, pitch: NaN, gap: NaN, overlap: NaN, edgeWidthFront: 0, edgeWidthBack: 0, edgeMode: false, alts: [] };
   const best = cands.reduce((b, x) => (x.dist < b.dist - 1e-9 || (Math.abs(x.dist - b.dist) <= 1e-9 && x.total % 2 === 0 && b.total % 2 === 1) ? x : b));
   const alts = cands.filter(x => x.total !== best.total && Math.abs(x.total - best.total) <= 2 && x.overlap > 0)
     .map(x => ({ front: Math.ceil(x.total / 2), back: Math.floor(x.total / 2), overlap: x.overlap }));
-  return { ...best, front: Math.ceil(best.total / 2), back: Math.floor(best.total / 2), edgeWidth, edgeMode: true, alts };
+  const front = Math.ceil(best.total / 2), back = Math.floor(best.total / 2);
+  const d = DATA.dimensions;
+  const innerRight = s.len - insetOf(s.endJoint, d);
+  const fitEdgeWidth = (faceCount, staggerOffset) => {
+    if (faceCount < 1) return 0;
+    let lastFullRight = insetOf(s.startJoint, d);
+    for (let i = 0; i < faceCount; i++) {
+      const x = insetOf(s.startJoint, d) + staggerOffset + i * best.pitch;
+      if (x + c.width <= innerRight + 1e-6) lastFullRight = x + c.width;
+    }
+    const remaining = innerRight - lastFullRight;
+    return remaining >= minEdge && remaining < c.width - 1e-6 ? remaining : 0;
+  };
+  const frontEdgeWidth = fitEdgeWidth(front, 0);
+  const backEdgeWidth = fitEdgeWidth(back, best.spacing);
+  return {
+    ...best,
+    front,
+    back,
+    edgeWidthFront: frontEdgeWidth >= minEdge ? frontEdgeWidth : 0,
+    edgeWidthBack: backEdgeWidth >= minEdge ? backEdgeWidth : 0,
+    edgeWidth: Math.max(frontEdgeWidth, backEdgeWidth),
+    edgeMode: frontEdgeWidth >= minEdge || backEdgeWidth >= minEdge,
+    alts
+  };
 }
 
 function calculate(c) {
@@ -660,7 +682,9 @@ function calculate(c) {
     const count = Math.ceil(base * (1 + c.spare / 100) - 1e-9);
     // warned when the overlap is more than 50 % above or below the target
     const offTarget = Number.isFinite(fc.overlap) && (fc.overlap > 1.5 * c.overlap || fc.overlap < 0.5 * c.overlap);
-    return { ...s, pl, base, count, front: fc.front, back: fc.back, gap: fc.gap, overlap: fc.overlap, edgeWidth: fc.edgeWidth, edgeMode: !!fc.edgeMode, offTarget, alts: fc.alts };
+    return { ...s, pl, base, count, front: fc.front, back: fc.back, gap: fc.gap, overlap: fc.overlap,
+      edgeWidth: fc.edgeWidth, edgeWidthFront: fc.edgeWidthFront || 0, edgeWidthBack: fc.edgeWidthBack || 0,
+      edgeMode: !!fc.edgeMode, offTarget, alts: fc.alts };
   });
   const pieces = [];
   rows.forEach(r => {
@@ -668,10 +692,11 @@ function calculate(c) {
       for (let i = 0; i < r.count; i++) pieces.push({ name: r.tag, len: r.pl });
       return;
     }
-    const edgeCount = Math.min(4, r.count);
+    const edgeCount = (r.edgeWidthFront > 0 ? 1 : 0) + (r.edgeWidthBack > 0 ? 1 : 0);
     const fullCount = Math.max(0, r.count - edgeCount);
     for (let i = 0; i < fullCount; i++) pieces.push({ name: r.tag, len: r.pl, edge: false, width: c.width });
-    for (let i = 0; i < edgeCount; i++) pieces.push({ name: r.tag, len: r.pl, edge: true, width: r.edgeWidth, pair: r.tag });
+    if (r.edgeWidthFront > 0) pieces.push({ name: r.tag, len: r.pl, edge: true, width: r.edgeWidthFront, face: 'front' });
+    if (r.edgeWidthBack > 0) pieces.push({ name: r.tag, len: r.pl, edge: true, width: r.edgeWidthBack, face: 'back' });
   });
   pieces.sort((a, b) => b.len - a.len || byName(a, b));
 
@@ -692,28 +717,48 @@ function calculate(c) {
       b.used += p.len + (b.items.length ? c.kerf : 0);
       b.items.push(p);
     }
+    edgePieces.sort((a, b) => b.width - a.width || b.len - a.len || byName(a, b));
     for (const p of edgePieces) {
       let target = null;
       for (const b of boards) {
         if (!b.edgeBoard) continue;
-        for (let lane = 0; lane < 2; lane++) {
-          const laneUsed = b.lanes[lane].reduce((sum, item) => sum + item.len + (b.lanes[lane].indexOf(item) ? c.kerf : 0), 0);
-          if (laneUsed + p.len + (b.lanes[lane].length ? c.kerf : 0) <= cap) {
+        const lane = b.lanes.find(l => l.width === p.width);
+        if (lane) {
+          const laneUsed = lane.items.reduce((sum, item, i) => sum + item.len + (i ? c.kerf : 0), 0);
+          if (laneUsed + p.len + (lane.items.length ? c.kerf : 0) <= cap) {
             target = { board: b, lane };
             break;
           }
         }
-        if (target) break;
       }
       if (!target) {
-        const b = { items: [], used: 0, lanes: [[], []], edgeBoard: true };
-        boards.push(b);
-        target = { board: b, lane: 0 };
+        for (const b of boards) {
+          if (!b.edgeBoard) continue;
+          const laneWidthUsed = b.lanes.reduce((sum, lane, i) => sum + lane.width + (i ? c.kerf : 0), 0);
+          if (laneWidthUsed + p.width + (b.lanes.length ? c.kerf : 0) <= c.width) {
+            const lane = { width: p.width, items: [] };
+            b.lanes.push(lane);
+            target = { board: b, lane };
+            break;
+          }
+        }
       }
-      target.board.lanes[target.lane].push(p);
+      if (!target) {
+        const b = { items: [], used: 0, lanes: [], usedWidth: 0, remWidth: c.width, edgeBoard: true };
+        boards.push(b);
+        const lane = { width: p.width, items: [] };
+        b.lanes.push(lane);
+        b.usedWidth = p.width;
+        b.remWidth = c.width - p.width;
+        target = { board: b, lane };
+      }
+      target.lane.items.push(p);
       target.board.items.push(p);
-      const laneUsed = target.board.lanes[target.lane].reduce((sum, item) => sum + item.len + (target.board.lanes[target.lane].indexOf(item) ? c.kerf : 0), 0);
+      const laneUsed = target.lane.items.reduce((sum, item, i) => sum + item.len + (i ? c.kerf : 0), 0);
       target.board.used = Math.max(target.board.used, laneUsed);
+      target.board.usedWidth = target.board.lanes.reduce((sum, lane, i) => sum + lane.width + (i ? c.kerf : 0), 0);
+      target.board.remWidth = c.width - target.board.usedWidth;
+      target.board.rem = cap - target.board.used;
     }
   }
   boards.forEach(b => { b.items.sort(byName); b.rem = cap - b.used; });
@@ -810,9 +855,12 @@ function renderCalc() {
   for (const r of rows) {
     sumCount += r.count;
     const spare = r.count > r.base ? ` (+${r.count - r.base})` : '';
+    const edgeWidths = r.edgeWidthFront || r.edgeWidthBack
+      ? `${r.edgeWidthFront ? r.edgeWidthFront.toFixed(r.edgeWidthFront % 1 ? 1 : 0) : '–'} / ${r.edgeWidthBack ? r.edgeWidthBack.toFixed(r.edgeWidthBack % 1 ? 1 : 0) : '–'}`
+      : '–';
     seg += `<tr><td><b>${r.tag}</b>${r.gate ? ' <span class="gate">vartai</span>' : ''}</td>` +
       `<td>${r.len}</td><td>${r.h}</td><td>${r.pl}</td><td data-num="${r.count}">${r.front}+${r.back}${spare}</td>` +
-      `<td>${r.edgeMode ? r.edgeWidth.toFixed(r.edgeWidth % 1 ? 1 : 0) : '–'}</td>` +
+      `<td>${edgeWidths}</td>` +
       `<td class="${r.gap < 0 ? 'bad' : ''}">${r.gap.toFixed(0)}</td>` +
       `<td class="${r.offTarget ? 'bad' : ''}">${isNaN(r.overlap) ? '–' : r.overlap.toFixed(0)}</td></tr>`;
   }
@@ -822,9 +870,10 @@ function renderCalc() {
   const groups = new Map();
   boards.forEach(b => {
     const lens = b.items.map(p => p.len).sort((x, y) => y - x);
-    const widthKey = b.edgeBoard ? 'kraštinės 2/board' : 'pilnos';
-    const key = `${widthKey}|${lens.join(' + ')}`;
-    if (!groups.has(key)) groups.set(key, { lens, widthKey, rem: b.rem, count: 0, tags: new Set() });
+    const widths = b.edgeBoard ? b.lanes.map(l => l.width).sort((x, y) => y - x) : [];
+    const widthKey = b.edgeBoard ? 'kraštinės' : 'pilnos';
+    const key = `${widthKey}|${widths.join('+')}|${lens.join(' + ')}`;
+    if (!groups.has(key)) groups.set(key, { lens, widths, widthKey, rem: b.rem, remWidth: b.remWidth || 0, count: 0, tags: new Set() });
     const g = groups.get(key);
     g.count++;
     b.items.forEach(p => g.tags.add(p.name));
@@ -840,14 +889,17 @@ function renderCalc() {
     }
     return parts.join(' + ');
   };
-  let cut = '<tr><th>Pjūvis, mm</th><th>Lentų</th><th>Segmentai</th><th>Lentos likutis, mm</th></tr>';
+  let cut = '<tr><th>Pjūvis, mm</th><th>Lentų</th><th>Segmentai</th><th>Lik. ilgis / plotis, mm</th></tr>';
   sortedGroups.forEach(g => {
     const tags = [...g.tags].sort(tagCmp).join(', ');
-    const cutLabel = g.widthKey === 'kraštinės 2/board'
-      ? `${fmtPieces(g.lens)} (kraštinės, 2 pjovimo juostos)`
+    const cutLabel = g.widthKey === 'kraštinės'
+      ? `${fmtPieces(g.lens)} (kraštinės ${g.widths.join(' + ')} mm)`
       : fmtPieces(g.lens);
+    const remLabel = g.widthKey === 'kraštinės'
+      ? `${g.rem} / ${g.remWidth}`
+      : `${g.rem} / –`;
     cut += `<tr><td>${cutLabel}</td><td>${g.count}</td><td class="wrapcell" data-num="${g.tags.size}">${tags}</td>` +
-      `<td class="${g.rem < 0 ? 'bad' : ''}">${g.rem}</td></tr>`;
+      `<td class="${g.rem < 0 || g.remWidth < 0 ? 'bad' : ''}">${remLabel}</td></tr>`;
   });
   cut += `<tr class="tot"><td>Iš viso</td><td>${boards.length}</td><td></td><td></td></tr>`;
   document.getElementById('cutTbl').innerHTML = cut;
@@ -1044,25 +1096,30 @@ function drawSegment(svg, s, fs) {
     for (let face = 0; face < 2; face++) {
       const count = face === 0 ? fit.front : fit.back;
       const innerRight = L - insetR;
-      const sequence = [];
+      const staggerOffset = face === 0 ? 0 : fit.spacing;
+      let lastFullRight = insetL;
       for (let i = 0; i < count; i++) {
-        if (i === 0) sequence.push({ edge: true, x: insetL });
-        else if (i === count - 1) sequence.push({ edge: true, x: innerRight - fit.edgeWidth });
-        else {
-          const latticeIndex = face === 0
-            ? (i * 2)
-            : (i * 2 + 1);
-          const x = insetL + latticeIndex * fit.spacing;
-          if (x + cw <= innerRight - fit.edgeWidth) sequence.push({ edge: false, x });
-        }
-      }
-      for (const item of sequence) {
+        const x = insetL + staggerOffset + i * fit.pitch;
+        if (x + cw > innerRight + 1e-6) continue;
         svg.appendChild(el('rect', {
-          x: item.x,
+          x,
           y: faceY[face],
-          width: item.edge ? fit.edgeWidth : cw,
+          width: cw,
           height: t,
-          fill: item.edge ? '#e8d5b5' : '#f3e6cf',
+          fill: '#f3e6cf',
+          stroke: boardStroke,
+          'stroke-width': 5
+        }));
+        lastFullRight = x + cw;
+      }
+      const edgeWidth = face === 0 ? fit.edgeWidthFront : fit.edgeWidthBack;
+      if (edgeWidth > 0) {
+        svg.appendChild(el('rect', {
+          x: innerRight - edgeWidth,
+          y: faceY[face],
+          width: edgeWidth,
+          height: t,
+          fill: '#e8d5b5',
           stroke: boardStroke,
           'stroke-width': 5
         }));
