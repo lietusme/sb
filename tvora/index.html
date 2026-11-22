@@ -223,16 +223,16 @@
   </menu>
 </dialog>
 <div class="calc" id="viewCalc">
-  <section class="page pg-cut">
-  <div class="card">
-    <h2>Lentų pjaustymas</h2>
-    <div><table id="cutTbl"></table></div>
-  </div>
-  </section>
   <section class="page pg-seg">
   <div class="card">
     <h2>Detalės pagal segmentus</h2>
     <div><table id="segTbl"></table></div>
+  </div>
+  </section>
+  <section class="page pg-cut">
+  <div class="card">
+    <h2>Lentų pjaustymas</h2>
+    <div><table id="cutTbl"></table></div>
   </div>
   </section>
   <section class="page pg-calc-top">
@@ -281,6 +281,7 @@
     <label>Ilgis, mm <input type="number" id="dlgLen" step="1" required></label>
     <label>Aukštis H, mm <input type="number" id="dlgH" step="1" required></label>
     <label class="toggle-row"><input type="checkbox" id="dlgExactHeight"> Aukštis H nekintamas</label>
+    <label class="toggle-row"><input type="checkbox" id="dlgGate"> Vartai</label>
     <menu>
       <button value="cancel" formnovalidate class="btn-cancel">Atšaukti</button>
       <button id="dlgOk" value="ok" class="btn-save">Išsaugoti</button>
@@ -604,6 +605,7 @@ document.getElementById('plan').addEventListener('click', e => {
   document.getElementById('dlgLen').value = seg.len;
   document.getElementById('dlgH').value = seg.h;
   document.getElementById('dlgExactHeight').checked = !!seg.exactHeight;
+  document.getElementById('dlgGate').checked = !!seg.gate;
   openModal(dlg);
 });
 
@@ -613,6 +615,7 @@ dlg.addEventListener('close', () => {
   seg.len = parseFloat(document.getElementById('dlgLen').value) || seg.len;
   seg.h = parseFloat(document.getElementById('dlgH').value) || seg.h;
   seg.exactHeight = document.getElementById('dlgExactHeight').checked;
+  seg.gate = document.getElementById('dlgGate').checked;
   render();
 });
 
@@ -812,61 +815,72 @@ function calculate(c) {
   if (!c.edgeCut) {
     for (const p of pieces) {
       let b = boards.find(x => x.used + p.len + (x.items.length ? c.kerf : 0) <= cap);
-      if (!b) { b = { items: [], used: 0, lanes: [[], []] }; boards.push(b); }
+      if (!b) { b = { items: [], used: 0, lanes: [[], []], fullUsed: 0, edgeUsed: 0, edgeLanes: [], edgeBoard: false, mixed: false }; boards.push(b); }
       b.used += p.len + (b.items.length ? c.kerf : 0);
+      b.fullUsed = b.used;
       b.items.push(p);
+      b.rem = cap - b.used;
     }
   } else {
     const fullPieces = pieces.filter(p => !p.edge);
     const edgePieces = pieces.filter(p => p.edge);
     for (const p of fullPieces) {
       let b = boards.find(x => x.used + p.len + (x.items.length ? c.kerf : 0) <= cap);
-      if (!b) { b = { items: [], used: 0, lanes: [[], []] }; boards.push(b); }
+      if (!b) { b = { items: [], used: 0, lanes: [[], []], fullUsed: 0, edgeUsed: 0, edgeLanes: [], edgeBoard: false, mixed: false }; boards.push(b); }
+      b.used += p.len + (b.items.length ? c.kerf : 0);
+      b.fullUsed = b.used;
+      b.items.push(p);
+      b.rem = cap - b.used;
+    }
+    const edgeGroups = new Map();
+    edgePieces.forEach(p => {
+      if (!edgeGroups.has(p.len)) edgeGroups.set(p.len, []);
+      edgeGroups.get(p.len).push(p);
+    });
+    const orderedLengths = [...edgeGroups.keys()].sort((a, b) => b - a);
+
+    const addEdgePiece = (b, p) => {
       b.used += p.len + (b.items.length ? c.kerf : 0);
       b.items.push(p);
-    }
-    edgePieces.sort((a, b) => b.width - a.width || b.len - a.len || byName(a, b));
-    for (const p of edgePieces) {
-      let target = null;
-      for (const b of boards) {
-        if (!b.edgeBoard) continue;
-        const lane = b.lanes.find(l => l.width === p.width);
-        if (lane) {
-          const laneUsed = lane.items.reduce((sum, item, i) => sum + item.len + (i ? c.kerf : 0), 0);
-          if (laneUsed + p.len + (lane.items.length ? c.kerf : 0) <= cap) {
-            target = { board: b, lane };
-            break;
-          }
-        }
+      b.rem = cap - b.used;
+      if (!b.edgeWidths) b.edgeWidths = [];
+      if (!b.edgeWidths.includes(p.width)) b.edgeWidths.push(p.width);
+      b.remWidth = b.edgeWidths.reduce((sum, width) => sum + (c.width - width), 0);
+      if (b.items.some(item => !item.edge)) {
+        b.mixed = true;
+        b.edgeBoard = false;
       }
-      if (!target) {
+    };
+
+    for (const len of orderedLengths) {
+      const group = edgeGroups.get(len).sort((a, b) => b.width - a.width || byName(a, b));
+      while (group.length) {
+        let count = group.length;
+        let addedLength = len * count + (count - 1) * c.kerf;
+        while (count > 1 && addedLength > cap) {
+          count--;
+          addedLength = len * count + (count - 1) * c.kerf;
+        }
+
+        let target = null;
         for (const b of boards) {
-          if (!b.edgeBoard) continue;
-          const laneWidthUsed = b.lanes.reduce((sum, lane, i) => sum + lane.width + (i ? c.kerf : 0), 0);
-          if (laneWidthUsed + p.width + (b.lanes.length ? c.kerf : 0) <= c.width) {
-            const lane = { width: p.width, items: [] };
-            b.lanes.push(lane);
-            target = { board: b, lane };
-            break;
+          if (b.items.length === 0) continue;
+          const boardAdded = addedLength + (b.items.length ? c.kerf : 0);
+          if (b.used + boardAdded <= cap) {
+            const residual = cap - (b.used + boardAdded);
+            if (!target || residual < target.residual) target = { board: b, residual };
           }
         }
+
+        if (!target) {
+          const b = { items: [], used: 0, lanes: [], edgeLanes: [], edgeUsed: 0, edgeWidths: [], usedWidth: 0, remWidth: c.width, edgeBoard: true, mixed: false, fullUsed: 0 };
+          boards.push(b);
+          target = { board: b, residual: cap - addedLength };
+        }
+
+        const chunk = group.splice(0, count);
+        chunk.forEach(p => addEdgePiece(target.board, p));
       }
-      if (!target) {
-        const b = { items: [], used: 0, lanes: [], usedWidth: 0, remWidth: c.width, edgeBoard: true };
-        boards.push(b);
-        const lane = { width: p.width, items: [] };
-        b.lanes.push(lane);
-        b.usedWidth = p.width;
-        b.remWidth = c.width - p.width;
-        target = { board: b, lane };
-      }
-      target.lane.items.push(p);
-      target.board.items.push(p);
-      const laneUsed = target.lane.items.reduce((sum, item, i) => sum + item.len + (i ? c.kerf : 0), 0);
-      target.board.used = Math.max(target.board.used, laneUsed);
-      target.board.usedWidth = target.board.lanes.reduce((sum, lane, i) => sum + lane.width + (i ? c.kerf : 0), 0);
-      target.board.remWidth = c.width - target.board.usedWidth;
-      target.board.rem = cap - target.board.used;
     }
   }
   boards.forEach(b => { b.items.sort(byName); b.rem = cap - b.used; });
@@ -999,10 +1013,15 @@ function renderCalc() {
   const groups = new Map();
   boards.forEach(b => {
     const lens = b.items.map(p => p.len).sort((x, y) => y - x);
-    const widths = b.edgeBoard ? b.lanes.map(l => l.width).sort((x, y) => y - x) : [];
-    const widthKey = b.edgeBoard ? 'kraštinės' : 'pilnos';
-    const key = `${widthKey}|${widths.join('+')}|${lens.join(' + ')}`;
-    if (!groups.has(key)) groups.set(key, { lens, widths, widthKey, rem: b.rem, remWidth: b.remWidth || 0, count: 0, tags: new Set() });
+    const fullLens = b.items.filter(p => !p.edge).map(p => p.len).sort((x, y) => y - x);
+    const edgeLens = b.items.filter(p => p.edge).map(p => p.len).sort((x, y) => y - x);
+    const widths = (b.edgeBoard || b.mixed)
+      ? (b.edgeWidths || []).slice().sort((x, y) => y - x)
+      : [];
+    const uniqueWidths = [...new Set(widths)].sort((x, y) => y - x);
+    const widthKey = b.mixed ? 'mišrios' : b.edgeBoard ? 'kraštinės' : 'pilnos';
+    const key = `${widthKey}|${uniqueWidths.join('+')}|${lens.join(' + ')}`;
+    if (!groups.has(key)) groups.set(key, { lens, fullLens, edgeLens, widths: uniqueWidths, widthKey, rem: b.rem, remWidth: b.remWidth || 0, count: 0, tags: new Set() });
     const g = groups.get(key);
     g.count++;
     b.items.forEach(p => g.tags.add(p.name));
@@ -1022,7 +1041,11 @@ function renderCalc() {
   sortedGroups.forEach(g => {
     const tags = [...g.tags].sort(tagCmp).join(', ');
     const cutLabel = g.widthKey === 'kraštinės'
-      ? `${fmtPieces(g.lens)} (kraštinė ${g.widths[0]} mm)`
+      ? g.widths.length > 1
+        ? `${fmtPieces(g.lens)} (kraštinės ${g.widths.join(', ')})`
+        : `${fmtPieces(g.lens)} (kraštinė ${g.widths[0]})`
+      : g.widthKey === 'mišrios'
+      ? `Pilnos: ${fmtPieces(g.fullLens)} + kraštinė ${g.widths.join(' / ')}: ${fmtPieces(g.edgeLens)}`
       : fmtPieces(g.lens);
     const remLabel = `${g.rem}`;
     cut += `<tr><td>${cutLabel}</td><td>${g.count}</td><td class="wrapcell" data-num="${g.tags.size}">${tags}</td>` +
@@ -1041,7 +1064,7 @@ function renderCalc() {
   const kerfT = boards.reduce((s, b) => s + Math.max(0, b.items.length - 1) * c.kerf, 0);
   const remT = boards.reduce((s, b) => s + b.rem, 0);
   const edgeRemWidthT = c.edgeCut
-    ? boards.filter(b => b.edgeBoard).reduce((s, b) => s + b.remWidth, 0)
+    ? boards.filter(b => b.edgeBoard || b.mixed).reduce((s, b) => s + b.remWidth, 0)
     : 0;
   const edgeRemM3 = edgeRemWidthT * c.thick * c.stock / 1e9;
   const totalLen = N * c.stock;
@@ -1295,8 +1318,17 @@ function drawSegment(svg, s, fs) {
       }));
     }
   }
-  const braceX0 = s.gate ? 0 : insetL;
-  const braceX1 = s.gate ? L : L - insetR;
+  const allFaceBoards = (fit.faceBoards || []).flat();
+  const boardStrokeWidth = 5;
+  const boardStrokeHalf = boardStrokeWidth / 2;
+  const boardBounds = allFaceBoards.length
+    ? {
+        x0: Math.min(...allFaceBoards.map(board => board.x)) - boardStrokeHalf,
+        x1: Math.max(...allFaceBoards.map(board => board.x + board.width)) + boardStrokeHalf
+      }
+    : { x0: insetL, x1: L - insetR };
+  const braceX0 = s.gate ? boardBounds.x0 : insetL;
+  const braceX1 = s.gate ? boardBounds.x1 : L - insetR;
   svg.appendChild(el('rect', { x: braceX0, y: -cb.width / 2, width: braceX1 - braceX0, height: cb.width, fill: '#6b6b6b' }));
 
   if (!s.gate) {
@@ -1305,7 +1337,10 @@ function drawSegment(svg, s, fs) {
   }
 
   // width dimension between the inner faces of the end columns
-  const x0 = s.gate ? 0 : insetL, x1 = s.gate ? L : L - insetR, dy = SEG_DIM_Y, ar = 45;
+  const x0 = s.gate ? boardBounds.x0 : insetL;
+  const x1 = s.gate ? boardBounds.x1 : L - insetR;
+  const gateBoardWidth = Math.round(x1 - x0);
+  const dy = SEG_DIM_Y, ar = 45;
   const dim = { stroke: '#2b2b2b', 'stroke-width': 4, fill: 'none' };
   svg.appendChild(el('line', { x1: x0, y1: 170, x2: x0, y2: dy + 60, ...dim }));
   svg.appendChild(el('line', { x1: x1, y1: 170, x2: x1, y2: dy + 60, ...dim }));
@@ -1314,7 +1349,7 @@ function drawSegment(svg, s, fs) {
   svg.appendChild(el('path', { d: `M${x1 - ar} ${dy - 22} L${x1} ${dy} L${x1 - ar} ${dy + 22}`, ...dim }));
 
   const mid = (x0 + x1) / 2;
-  svg.appendChild(el('text', { x: mid, y: dy, 'data-off': 1.8, 'font-size': fs, 'font-weight': 700, 'text-anchor': 'middle', fill: '#111', 'font-family': 'Arial' }, `${s.len}${s.gate ? ' · vartai' : ''}`));
+  svg.appendChild(el('text', { x: mid, y: dy, 'data-off': 1.8, 'font-size': fs, 'font-weight': 700, 'text-anchor': 'middle', fill: '#111', 'font-family': 'Arial' }, `${s.gate ? gateBoardWidth : s.len}${s.gate ? ' · vartai' : ''}`));
   const pieceHeight = s.exactHeight ? s.h : s.h - c.topGap - c.bottomGap;
   const edgeCount = (fit.cutFront > 0 ? 1 : 0) + (fit.cutBack > 0 ? 1 : 0);
   const detailCount = edgeCount > 0 ? `${fit.front}+${fit.back}+${edgeCount}` : `${fit.front}+${fit.back}`;
@@ -1394,6 +1429,7 @@ function validate(d) {
         if (typeof s.length !== 'number' || typeof s.height !== 'number') fail(`${sw}: "length" ir "height" turi būti skaičiai.`);
         if (!JOINTS.includes(s.joint)) fail(`${sw}: neteisinga "joint" reikšmė.`);
         if (s.exactHeight !== undefined && typeof s.exactHeight !== 'boolean') fail(`${sw}: "exactHeight" turi būti loginė reikšmė.`);
+        if (s.gate !== undefined && typeof s.gate !== 'boolean') fail(`${sw}: "gate" turi būti loginė reikšmė.`);
       });
     });
     (sec.extensions || []).forEach((e, x) => {
