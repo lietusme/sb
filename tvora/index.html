@@ -11,7 +11,7 @@
   header h1 { font-size: 12px; margin: 0; font-weight: 600; letter-spacing: .4px; }
   header h1.changed { color: #ffa94d; }
   .wrap { padding: 16px; }
-  .wrap.page { width: 210mm; max-width: calc(100% - 32px); margin: 0 auto; box-sizing: border-box; }
+  .wrap.page, .wrap.calc { width: 210mm; max-width: calc(100% - 32px); margin: 0 auto; box-sizing: border-box; }
   .sheet, .card { background: #fff; border: 1px solid #c9c4b6; box-shadow: 0 2px 8px rgba(0,0,0,.08); padding: 12px 14px; margin: 0 0 16px; }
   .sheet > svg#plan { display: block; width: 100%; height: auto; }
   .sheet svg#plan { max-width: 100%; margin: 0 auto; }
@@ -60,7 +60,6 @@
   header h1 { flex: 1; }
   .pv-open { margin: 0; background: transparent; color: #f4f1ea; border: 1px solid #6b7782; padding: 6px 12px; }
   .pv-bar button { margin: 0; }
-  .calc { padding: 0; }
   .plan-head { padding: 0; }
   .card h2 { font-size: 12px; font-weight: 700; margin: 0 0 10px; color: #1f2a33; }
   .sub-h { font-size: 12px; font-weight: 700; color: #555; margin: 4px 0 8px; }
@@ -99,13 +98,13 @@
   .warn { color: #a3361f; font-size: 12px; margin-top: 6px; }
   .seg-link { cursor: pointer; text-decoration: underline; }
   .seg-link:hover { opacity: .7; }
-  @media (max-width: 1000px) { .wrap { padding: 8px; } .wrap.page { max-width: calc(100% - 16px); } }
+  @media (max-width: 1000px) { .wrap { padding: 8px; } .wrap.page, .wrap.calc { max-width: calc(100% - 16px); } }
   @media (max-width: 640px) {
     header { padding: 10px 12px; gap: 8px; flex-wrap: nowrap; }
     header h1 { flex: 1 1 auto; min-width: 0; }
     .menu { flex: 0 0 auto; }
     .wrap { padding: 8px; }
-    .wrap.page { width: 100%; max-width: none; }
+    .wrap.page, .wrap.calc { width: 100%; max-width: none; }
     .card, .sheet { margin: 0 0 12px; padding: 8px 10px; }
     .card th, .card td { padding: 3px; }
     .plan-head { padding: 0; }
@@ -143,16 +142,16 @@
   body.print-view .prow input { font-size: 12px; }
   .print-only { display: none !important; }
   body.print-view .print-only { display: block !important; }
-  body.print-view .print-seg-section { page-break-before: always; break-before: page; }
+  body.print-view .print-seg-page { page-break-before: always; break-before: page; }
   body.print-view .print-seg-grid { display: table; width: 100%; border-collapse: collapse; }
   body.print-view .print-seg-row { display: table-row; break-inside: avoid; page-break-inside: avoid; }
   body.print-view .print-seg-drawing,
   body.print-view .print-seg-info { display: table-cell; vertical-align: middle; border: 0.5pt solid #777; }
-  body.print-view .print-seg-drawing { width: 66.666%; padding: 2mm; }
+  body.print-view .print-seg-drawing { width: 66.666%; padding: 1mm 2mm; position: relative; }
   body.print-view .print-seg-info { width: 33.333%; padding: 2mm 3mm; line-height: 1.45; }
-  body.print-view .print-seg-svg { display: block; width: 100%; height: 34mm; }
+  body.print-view .print-seg-id { position: absolute; top: 1mm; left: 2mm; font-size: 12px; font-weight: 700; }
+  body.print-view .print-seg-svg { display: block; width: 100%; height: 18mm; margin-top: 5mm; }
   body.print-view #viewPlan { page-break-after: avoid; break-after: avoid; }
-  body.print-view #viewPlan .print-seg-section { page-break-before: always; break-before: page; }
   body.print-view .pg-cut, body.print-view .pg-seg, body.print-view .pg-calc-top {
     page-break-before: always; break-before: page;
   }
@@ -209,10 +208,8 @@
     </div>
     <svg id="planSegPreview" xmlns="http://www.w3.org/2000/svg" class="seg-svg"></svg>
   </div>
-  <section class="print-only print-seg-section">
-    <h2>Segmento peržiūra</h2>
-    <div id="printSegTbl" class="print-seg-grid"></div>
-  </section>
+</div>
+<div id="printSegTbl" class="print-seg-pages"></div>
 <dialog id="jsonDlg">
   <div class="dlg-head"><h3>Įklijuoti JSON</h3><button type="button" class="dlg-x" id="jsonX" aria-label="Uždaryti"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M1 1L11 11M11 1L1 11" stroke="currentColor" stroke-width="1.6"/></svg></button></div>
   <textarea id="jsonText" rows="18" spellcheck="false" placeholder="Įklijuokite JSON čia"></textarea>
@@ -222,7 +219,7 @@
     <button type="button" id="jsonLoad" class="btn-save">Įkelti</button>
   </menu>
 </dialog>
-<div class="calc" id="viewCalc">
+<div class="wrap calc" id="viewCalc">
   <section class="page pg-seg">
   <div class="card">
     <h2>Detalės pagal segmentus</h2>
@@ -273,7 +270,6 @@
     <div id="unused"></div>
   </div>
   </section>
-</div>
 </div>
 <dialog id="dlg">
   <form method="dialog">
@@ -502,10 +498,20 @@ function render() {
   const xs = [], ys = [];
   g.segs.forEach(s => { xs.push(s.x1, s.x2); ys.push(s.y1, s.y2); });
   g.joints.forEach(j => { xs.push(j.x); ys.push(j.y); });
-  g.labels.forEach(l => { xs.push(l.x - 2600, l.x + 2600); ys.push(l.y); });
   g.secLabels.forEach(l => { xs.push(l.x); ys.push(l.y); });
   g.exts.forEach(e => { xs.push(e.x1, e.x2); ys.push(e.y1, e.y2); });
-  const minX = Math.min(...xs) - 2500, maxX = Math.max(...xs) + 2500;
+  g.labels.forEach(l => ys.push(l.y));
+  // Label text is drawn at LF units per em, and LF follows the drawing width. First estimate the width
+  // from a generous span, then take each label's real text extent (about 0.6 em per glyph) for the final bounds.
+  const widest = Math.max(...xs, ...g.labels.map(l => l.x + 2600)) - Math.min(...xs, ...g.labels.map(l => l.x - 2600));
+  const LF0 = LABEL_PX * (widest + 5000) / PLAN_PX;
+  for (const l of g.labels) {
+    const w = LABEL_GLYPH_EM * LF0 * labelChars(l);
+    if (l.horiz) xs.push(l.x - w / 2, l.x + w / 2);
+    else if (l.side === 'L') xs.push(l.x - 1.2 * LF0 - w, l.x - 1.2 * LF0);
+    else xs.push(l.x + 1.2 * LF0, l.x + 1.2 * LF0 + w);
+  }
+  const minX = Math.min(...xs) - PLAN_MARGIN, maxX = Math.max(...xs) + PLAN_MARGIN;
   const minY = Math.min(...ys) - 1200, maxY = Math.max(...ys) + 700;
   svg.setAttribute('viewBox', `${minX} ${minY} ${maxX - minX} ${maxY - minY}`);
   const LF = LABEL_PX * (maxX - minX) / PLAN_PX;
@@ -990,7 +996,7 @@ function renderCalc() {
       return link(r, `${r.tag}: ${r.front}+${r.back} persidengimas ${r.overlap.toFixed(0)} mm skiriasi daugiau nei 50 % nuo ${c.overlap} mm${alt}`);
     }));
 
-  let seg = '<tr><th>Segmentas</th><th>Ilgis, mm</th><th>H, mm</th><th>Detalės ilgis, mm</th>' +
+  let seg = '<tr><th>Segmentas</th><th>Detalės ilgis, mm</th>' +
     '<th>Detalių</th><th class="' + (c.edgeCut ? '' : 'hidden-edge-col') + '">Kraštinė lenta, mm</th>' +
     '<th>Tarpas, mm</th><th>Persidengimas, mm</th></tr>';
   let sumCount = 0;
@@ -1001,12 +1007,12 @@ function renderCalc() {
     const edgeCount = (r.cutFront > 0 ? 1 : 0) + (r.cutBack > 0 ? 1 : 0);
     const detailCount = edgeCount > 0 ? `${r.front}+${r.back}+${edgeCount}` : `${r.front}+${r.back}`;
     seg += `<tr><td><b>${r.tag}</b>${r.gate ? ' <span class="gate">vartai</span>' : ''}</td>` +
-      `<td>${r.len}</td><td>${r.h}</td><td>${r.pl}</td><td data-num="${r.count}">${detailCount}${spare}</td>` +
+      `<td>${r.pl}</td><td data-num="${r.count}">${detailCount}${spare}</td>` +
       `<td class="${c.edgeCut ? '' : 'hidden-edge-col'}">${edgeWidth}</td>` +
       `<td class="${r.gap < 0 ? 'bad' : ''}">${r.gap.toFixed(0)}</td>` +
       `<td class="${r.offTarget ? 'bad' : ''}">${isNaN(r.overlap) ? '–' : r.overlap.toFixed(0)}</td></tr>`;
   }
-  seg += `<tr class="tot"><td>Iš viso</td><td></td><td></td><td></td><td>${sumCount}</td>` +
+  seg += `<tr class="tot"><td>Iš viso</td><td></td><td>${sumCount}</td>` +
     `<td class="${c.edgeCut ? '' : 'hidden-edge-col'}"></td><td></td><td></td></tr>`;
   document.getElementById('segTbl').innerHTML = seg;
 
@@ -1138,12 +1144,17 @@ function drawEnd(svg, joint, x, inward, d) {
 // One font size everywhere (12px). Drawing labels use it too, scaled with the drawing.
 const LABEL_PX = 12;
 const PLAN_PX = 960;
+const PLAN_MARGIN = 600; // empty drawing units around the schema, so strokes and labels are not cut
+const LABEL_GLYPH_EM = 0.6; // average Arial glyph width in em, used to estimate label extents
+// characters on the longer of a label's two lines; the second line (pieces) is about 14 characters
+const labelChars = l => Math.max(`${l.tag} ${l.gate ? 'VARTAI ' : ''}W${l.len}xH${l.h}`.length, 14);
 const FAR_SHIFT = 2.4; // staggered horizontal labels move this many label sizes outward
 const LABEL_GAP_ABOVE = 820; // distance (mm) from the run's centre line to labels above it
 const LABEL_GAP_BELOW = 900; // same for labels below it
 const SEG_PX_PER_MM = 0.2; // fixed scale for every segment card: 1 px = 5 mm
 const SEG_PAD = 180; // end columns reach 160 mm past the segment ends; keep only a small margin beyond them
 const SEG_MIN_PX = 260; // narrowest segment card: the widest info line at 12 px is about 230 px
+const SEG_ROWS_PER_PAGE = 9; // print: most segment rows on one A4 sheet (about 26 mm per row)
 const SEG_BOX_MARGIN = 60; // space above and below the drawing inside the segment box (mm)
 const SEG_DIM_Y = 380; // height of the width dimension line in segment drawings
 const SEG_CARDS = [
@@ -1184,14 +1195,27 @@ function fitPrintLabels() {
   });
 }
 
+const BOARD_STROKE = 5; // painted outline width of a board, in drawing units
+
+// Horizontal crossbrace span. A gate brace spans the painted board edges (stroke half-width added);
+// any other brace spans between the inner faces of the end columns.
+function crossbraceSpan(s, fit, d) {
+  const insetL = insetOf(s.startJoint, d), insetR = insetOf(s.endJoint, d);
+  const boards = (fit.faceBoards || []).flat();
+  if (!s.gate || !boards.length) return { x0: insetL, x1: s.len - insetR };
+  const half = BOARD_STROKE / 2;
+  return {
+    x0: Math.min(...boards.map(b => b.x)) - half,
+    x1: Math.max(...boards.map(b => b.x + b.width)) + half
+  };
+}
+
 function drawPrintSegment(svg, s) {
   const d = DATA.dimensions, c = readCalc();
   const fit = chooseBoards(s, c);
   const boardStroke = s.gate ? '#b5651d' : '#8a6a4a';
   const cb = d.crossbrace;
   const faceY = [-cb.width / 2 - c.thick, cb.width / 2];
-  const insetL = insetOf(s.startJoint, d);
-  const innerRight = s.len - insetOf(s.endJoint, d);
 
   for (let face = 0; face < 2; face++) {
     for (const board of fit.faceBoards[face] || []) {
@@ -1202,22 +1226,13 @@ function drawPrintSegment(svg, s) {
         height: c.thick,
         fill: board.edge ? '#e7a44a' : '#f3e6cf',
         stroke: boardStroke,
-        'stroke-width': 5
+        'stroke-width': BOARD_STROKE
       }));
     }
   }
-  if (s.gate) {
-    const boards = fit.faceBoards.flat();
-    const x0 = boards.length ? Math.min(...boards.map(b => b.x)) : insetL;
-    const x1 = boards.length ? Math.max(...boards.map(b => b.x + b.width)) : innerRight;
-    svg.appendChild(el('rect', {
-      x: x0,
-      y: -cb.width / 2,
-      width: x1 - x0,
-      height: cb.width,
-      fill: '#6b6b6b'
-    }));
-  } else {
+  const span = crossbraceSpan(s, fit, d);
+  svg.appendChild(el('rect', { x: span.x0, y: -cb.width / 2, width: span.x1 - span.x0, height: cb.width, fill: '#6b6b6b' }));
+  if (!s.gate) {
     drawEnd(svg, s.startJoint, 0, +1, d);
     drawEnd(svg, s.endJoint, s.len, -1, d);
   }
@@ -1231,6 +1246,7 @@ function renderPrintSegments() {
   const { rows } = calculate(c);
   const rowByTag = new Map(rows.map(r => [r.tag, r]));
   const fs = LABEL_PX / SEG_PX_PER_MM;
+  const rowEls = [];
   for (const s of segmentList()) {
     const row = rowByTag.get(s.tag);
     const boxW = s.len + 2 * SEG_PAD;
@@ -1238,25 +1254,50 @@ function renderPrintSegments() {
     const vbX0 = s.len / 2 - boxW / 2;
     const vbY0 = -boxH / 2;
 
-    const tr = el('div', { class: 'print-seg-row' });
-    const drawing = el('div', { class: 'print-seg-drawing' });
+    // HTML containers must be HTML elements: el() creates SVG-namespace nodes, which ignore CSS table layout.
+    const tr = document.createElement('div');
+    tr.className = 'print-seg-row';
+    const drawing = document.createElement('div');
+    drawing.className = 'print-seg-drawing';
+    const id = document.createElement('div');
+    id.className = 'print-seg-id';
+    id.textContent = `${s.tag}${s.gate ? ' · Vartai' : ''}`;
     const svg = el('svg', { xmlns: SVG_NS, viewBox: `${vbX0} ${vbY0} ${boxW} ${boxH}`, class: 'print-seg-svg' });
     drawPrintSegment(svg, s);
+    drawing.appendChild(id);
     drawing.appendChild(svg);
 
-    const info = el('div', { class: 'print-seg-info' });
+    const info = document.createElement('div');
+    info.className = 'print-seg-info';
     const edge = row && (row.cutFront || row.cutBack)
       ? `Kraštinė: ${row.cutFront || row.cutBack} mm`
       : 'Kraštinė: –';
     info.innerHTML =
-      `<strong>${s.tag}${s.gate ? ' · Vartai' : ''}</strong><br>` +
-      `Ilgis: ${s.len} mm<br>Detalės aukštis: ${row ? row.pl : s.h - c.topGap - c.bottomGap} mm<br>` +
+      `Detalės aukštis: ${row ? row.pl : s.h - c.topGap - c.bottomGap} mm<br>` +
       `Detalių: ${row ? row.count : 0} (${row ? ((row.cutFront > 0 ? 1 : 0) + (row.cutBack > 0 ? 1 : 0) > 0 ? `${row.front}+${row.back}+${(row.cutFront > 0 ? 1 : 0) + (row.cutBack > 0 ? 1 : 0)}` : `${row.front}+${row.back}`) : '0+0'})<br>` +
       `Tarpas: ${row ? row.gap.toFixed(0) : '–'} mm · Persidengimas: ${row ? row.overlap.toFixed(0) : '–'} mm<br>` +
       `${edge}`;
     tr.appendChild(drawing);
     tr.appendChild(info);
-    host.appendChild(tr);
+    rowEls.push(tr);
+  }
+  // Rows are grouped into A4 sheets of at most SEG_ROWS_PER_PAGE, balanced so no sheet is nearly empty.
+  // Each sheet is a .page block, so the screen preview and the printout break at the same places.
+  const pages = Math.ceil(rowEls.length / SEG_ROWS_PER_PAGE);
+  const perPage = Math.ceil(rowEls.length / pages) || 1;
+  for (let i = 0; i < rowEls.length; i += perPage) {
+    const sheet = document.createElement('section');
+    sheet.className = 'page print-only print-seg-page';
+    if (i === 0) {
+      const h = document.createElement('h2');
+      h.textContent = 'Segmento peržiūra';
+      sheet.appendChild(h);
+    }
+    const grid = document.createElement('div');
+    grid.className = 'print-seg-grid';
+    rowEls.slice(i, i + perPage).forEach(r => grid.appendChild(r));
+    sheet.appendChild(grid);
+    host.appendChild(sheet);
   }
   fitPrintLabels();
 }
@@ -1335,7 +1376,6 @@ function drawSegment(svg, s, fs) {
   const cb = d.crossbrace;
   const half = cb.width / 2;
   const faceY = [-half - t, half];
-  const insetL = insetOf(s.startJoint, d), insetR = insetOf(s.endJoint, d);
   if (fit.edgeMode) {
     const defs = el('defs');
     const pattern = el('pattern', { id: 'edgeHatch', width: 24, height: 24, patternUnits: 'userSpaceOnUse' });
@@ -1353,31 +1393,20 @@ function drawSegment(svg, s, fs) {
         height: t,
         fill: board.edge ? 'url(#edgeHatch)' : '#f3e6cf',
         stroke: boardStroke,
-        'stroke-width': 5
+        'stroke-width': BOARD_STROKE
       }));
     }
   }
-  const allFaceBoards = (fit.faceBoards || []).flat();
-  const boardStrokeWidth = 5;
-  const boardStrokeHalf = boardStrokeWidth / 2;
-  const boardBounds = allFaceBoards.length
-    ? {
-        x0: Math.min(...allFaceBoards.map(board => board.x)) - boardStrokeHalf,
-        x1: Math.max(...allFaceBoards.map(board => board.x + board.width)) + boardStrokeHalf
-      }
-    : { x0: insetL, x1: L - insetR };
-  const braceX0 = s.gate ? boardBounds.x0 : insetL;
-  const braceX1 = s.gate ? boardBounds.x1 : L - insetR;
-  svg.appendChild(el('rect', { x: braceX0, y: -cb.width / 2, width: braceX1 - braceX0, height: cb.width, fill: '#6b6b6b' }));
+  const span = crossbraceSpan(s, fit, d);
+  svg.appendChild(el('rect', { x: span.x0, y: -cb.width / 2, width: span.x1 - span.x0, height: cb.width, fill: '#6b6b6b' }));
 
   if (!s.gate) {
     drawEnd(svg, s.startJoint, 0, +1, d);
     drawEnd(svg, s.endJoint, L, -1, d);
   }
 
-  // width dimension between the inner faces of the end columns
-  const x0 = s.gate ? boardBounds.x0 : insetL;
-  const x1 = s.gate ? boardBounds.x1 : L - insetR;
+  // width dimension between the inner faces of the end columns (gate: the painted board edges)
+  const x0 = span.x0, x1 = span.x1;
   const gateBoardWidth = Math.round(x1 - x0);
   const dy = SEG_DIM_Y, ar = 45;
   const dim = { stroke: '#2b2b2b', 'stroke-width': 4, fill: 'none' };
