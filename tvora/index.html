@@ -646,29 +646,31 @@ function edgeFit(s, c) {
   const best = cands.reduce((b, x) => (x.dist < b.dist - 1e-9 || (Math.abs(x.dist - b.dist) <= 1e-9 && x.total % 2 === 0 && b.total % 2 === 1) ? x : b));
   const alts = cands.filter(x => x.total !== best.total && Math.abs(x.total - best.total) <= 2 && x.overlap > 0)
     .map(x => ({ front: Math.ceil(x.total / 2), back: Math.floor(x.total / 2), overlap: x.overlap }));
-  const front = Math.ceil(best.total / 2), back = Math.floor(best.total / 2);
   const d = DATA.dimensions;
   const innerRight = s.len - insetOf(s.endJoint, d);
-  const fitEdgeWidth = (faceCount, staggerOffset) => {
-    if (faceCount < 1) return 0;
-    let lastFullRight = insetOf(s.startJoint, d);
+  const insetLeft = insetOf(s.startJoint, d);
+  const fitFace = (faceCount, staggerOffset) => {
+    let lastFullRight = insetLeft;
     for (let i = 0; i < faceCount; i++) {
-      const x = insetOf(s.startJoint, d) + staggerOffset + i * best.pitch;
+      const x = insetLeft + staggerOffset + i * best.pitch;
       if (x + c.width <= innerRight + 1e-6) lastFullRight = x + c.width;
     }
     const remaining = innerRight - lastFullRight;
-    return remaining >= minEdge && remaining < c.width - 1e-6 ? remaining : 0;
+    const cutWidth = remaining >= minEdge && remaining < c.width - 1e-6
+      ? Math.round(remaining)
+      : 0;
+    return { count: faceCount, cutWidth };
   };
-  const frontEdgeWidth = fitEdgeWidth(front, 0);
-  const backEdgeWidth = fitEdgeWidth(back, best.spacing);
+  const frontFit = fitFace(Math.ceil(best.total / 2), 0);
+  const backFit = fitFace(Math.floor(best.total / 2), best.spacing);
   return {
     ...best,
-    front,
-    back,
-    edgeWidthFront: frontEdgeWidth >= minEdge ? frontEdgeWidth : 0,
-    edgeWidthBack: backEdgeWidth >= minEdge ? backEdgeWidth : 0,
-    edgeWidth: Math.max(frontEdgeWidth, backEdgeWidth),
-    edgeMode: frontEdgeWidth >= minEdge || backEdgeWidth >= minEdge,
+    front: frontFit.count,
+    back: backFit.count,
+    edgeWidthFront: frontFit.cutWidth,
+    edgeWidthBack: backFit.cutWidth,
+    edgeWidth: Math.max(frontFit.cutWidth, backFit.cutWidth),
+    edgeMode: frontFit.cutWidth > 0 || backFit.cutWidth > 0,
     alts
   };
 }
@@ -850,7 +852,8 @@ function renderCalc() {
     }));
 
   let seg = '<tr><th>Segmentas</th><th>Ilgis, mm</th><th>H, mm</th><th>Detalės ilgis, mm</th>' +
-    '<th>Detalių</th><th>Kraštinė lenta, mm</th><th>Tarpas, mm</th><th>Persidengimas, mm</th></tr>';
+    '<th>Detalių</th>' + (c.edgeCut ? '<th>Kraštinė lenta, mm</th>' : '') +
+    '<th>Tarpas, mm</th><th>Persidengimas, mm</th></tr>';
   let sumCount = 0;
   for (const r of rows) {
     sumCount += r.count;
@@ -860,11 +863,12 @@ function renderCalc() {
       : '–';
     seg += `<tr><td><b>${r.tag}</b>${r.gate ? ' <span class="gate">vartai</span>' : ''}</td>` +
       `<td>${r.len}</td><td>${r.h}</td><td>${r.pl}</td><td data-num="${r.count}">${r.front}+${r.back}${spare}</td>` +
-      `<td>${edgeWidths}</td>` +
+      (c.edgeCut ? `<td>${edgeWidths}</td>` : '') +
       `<td class="${r.gap < 0 ? 'bad' : ''}">${r.gap.toFixed(0)}</td>` +
       `<td class="${r.offTarget ? 'bad' : ''}">${isNaN(r.overlap) ? '–' : r.overlap.toFixed(0)}</td></tr>`;
   }
-  seg += `<tr class="tot"><td>Iš viso</td><td></td><td></td><td></td><td>${sumCount}</td><td></td><td></td><td></td></tr>`;
+  seg += `<tr class="tot"><td>Iš viso</td><td></td><td></td><td></td><td>${sumCount}</td>` +
+    (c.edgeCut ? '<td></td>' : '') + '<td></td><td></td></tr>';
   document.getElementById('segTbl').innerHTML = seg;
 
   const groups = new Map();
@@ -889,15 +893,17 @@ function renderCalc() {
     }
     return parts.join(' + ');
   };
-  let cut = '<tr><th>Pjūvis, mm</th><th>Lentų</th><th>Segmentai</th><th>Lik. ilgis / plotis, mm</th></tr>';
+  let cut = '<tr><th>Pjūvis, mm</th><th>Lentų</th><th>Segmentai</th>' +
+    (c.edgeCut ? '<th>Lik. ilgis / plotis, mm</th>' : '<th>Lentos likutis, mm</th>') +
+    '</tr>';
   sortedGroups.forEach(g => {
     const tags = [...g.tags].sort(tagCmp).join(', ');
     const cutLabel = g.widthKey === 'kraštinės'
       ? `${fmtPieces(g.lens)} (kraštinės ${g.widths.join(' + ')} mm)`
       : fmtPieces(g.lens);
-    const remLabel = g.widthKey === 'kraštinės'
+    const remLabel = c.edgeCut && g.widthKey === 'kraštinės'
       ? `${g.rem} / ${g.remWidth}`
-      : `${g.rem} / –`;
+      : `${g.rem}`;
     cut += `<tr><td>${cutLabel}</td><td>${g.count}</td><td class="wrapcell" data-num="${g.tags.size}">${tags}</td>` +
       `<td class="${g.rem < 0 || g.remWidth < 0 ? 'bad' : ''}">${remLabel}</td></tr>`;
   });
@@ -1097,9 +1103,21 @@ function drawSegment(svg, s, fs) {
       const count = face === 0 ? fit.front : fit.back;
       const innerRight = L - insetR;
       const staggerOffset = face === 0 ? 0 : fit.spacing;
-      let lastFullRight = insetL;
       for (let i = 0; i < count; i++) {
         const x = insetL + staggerOffset + i * fit.pitch;
+        const edgeWidth = face === 0 ? fit.edgeWidthFront : fit.edgeWidthBack;
+        if (edgeWidth > 0 && i === count - 1) {
+          svg.appendChild(el('rect', {
+            x: innerRight - edgeWidth,
+            y: faceY[face],
+            width: edgeWidth,
+            height: t,
+            fill: '#e8d5b5',
+            stroke: boardStroke,
+            'stroke-width': 5
+          }));
+          continue;
+        }
         if (x + cw > innerRight + 1e-6) continue;
         svg.appendChild(el('rect', {
           x,
@@ -1107,19 +1125,6 @@ function drawSegment(svg, s, fs) {
           width: cw,
           height: t,
           fill: '#f3e6cf',
-          stroke: boardStroke,
-          'stroke-width': 5
-        }));
-        lastFullRight = x + cw;
-      }
-      const edgeWidth = face === 0 ? fit.edgeWidthFront : fit.edgeWidthBack;
-      if (edgeWidth > 0) {
-        svg.appendChild(el('rect', {
-          x: innerRight - edgeWidth,
-          y: faceY[face],
-          width: edgeWidth,
-          height: t,
-          fill: '#e8d5b5',
           stroke: boardStroke,
           'stroke-width': 5
         }));
