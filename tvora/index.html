@@ -119,6 +119,8 @@
   body.print-view * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body.print-view header { display: none; }
   body.print-view .pv-open, body.print-view .menu, body.print-view .msg, body.print-view dialog { display: none !important; }
+  body.print-view .screen-only,
+  body.preview-on .screen-only { display: none !important; }
   body.print-view .wrap, body.print-view .calc { width: auto; max-width: none; padding: 0; margin: 0; display: block; }
   body.print-view .hidden { display: block !important; }
   body.print-view .page { padding: 0; margin: 0; min-height: 0; width: auto; box-shadow: none; background: none; }
@@ -132,8 +134,34 @@
   body.print-view .card tr { break-inside: avoid; }
   body.print-view .card thead { display: table-header-group; }
   body.print-view .card th { background: #eee; }
+  body.print-view table { border-collapse: collapse; border: 0.5pt solid #777; }
+  body.print-view table th,
+  body.print-view table td { border: 0.5pt solid #777; }
+  body.print-view .card { border: none; box-shadow: none; }
+  body.print-view .card h2 { border-bottom: 0.5pt solid #777; padding-bottom: 2mm; }
   body.print-view .grid, body.print-view .prow { gap: 3mm 5mm; margin-bottom: 3mm; }
   body.print-view .prow input { font-size: 12px; }
+  .print-only { display: none !important; }
+  body.print-view .print-only { display: block !important; }
+  body.print-view .print-seg-section { page-break-before: always; break-before: page; }
+  body.print-view .print-seg-grid { display: table; width: 100%; border-collapse: collapse; }
+  body.print-view .print-seg-row { display: table-row; break-inside: avoid; page-break-inside: avoid; }
+  body.print-view .print-seg-drawing,
+  body.print-view .print-seg-info { display: table-cell; vertical-align: middle; border: 0.5pt solid #777; }
+  body.print-view .print-seg-drawing { width: 66.666%; padding: 2mm; }
+  body.print-view .print-seg-info { width: 33.333%; padding: 2mm 3mm; line-height: 1.45; }
+  body.print-view .print-seg-svg { display: block; width: 100%; height: 34mm; }
+  body.print-view #viewPlan { page-break-after: avoid; break-after: avoid; }
+  body.print-view #viewPlan .print-seg-section { page-break-before: always; break-before: page; }
+  body.print-view .pg-cut, body.print-view .pg-seg, body.print-view .pg-calc-top {
+    page-break-before: always; break-before: page;
+  }
+  body.print-view .print-params { display: block; line-height: 1.55; }
+  body.print-view .print-params h2 { margin: 0 0 3mm; }
+  body.print-view .print-params strong { display: inline-block; min-width: 90mm; }
+  body.print-view .pg-calc-top > .card:first-child h2,
+  body.print-view .pg-calc-top > .card:first-child .sub-h,
+  body.print-view .pg-calc-top > .card:first-child .prow { display: none; }
   .pv-bar { display: none; gap: 8px; align-items: center; justify-content: center; padding: 10px; background: #1f2a33; }
   body.print-view .pv-bar { display: flex; }
   body.preview-on { background: #8c8c8c; }
@@ -181,6 +209,10 @@
     </div>
     <svg id="planSegPreview" xmlns="http://www.w3.org/2000/svg" class="seg-svg"></svg>
   </div>
+  <section class="print-only print-seg-section">
+    <h2>Segmento peržiūra</h2>
+    <div id="printSegTbl" class="print-seg-grid"></div>
+  </section>
 <dialog id="jsonDlg">
   <div class="dlg-head"><h3>Įklijuoti JSON</h3><button type="button" class="dlg-x" id="jsonX" aria-label="Uždaryti"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M1 1L11 11M11 1L1 11" stroke="currentColor" stroke-width="1.6"/></svg></button></div>
   <textarea id="jsonText" rows="18" spellcheck="false" placeholder="Įklijuokite JSON čia"></textarea>
@@ -230,6 +262,7 @@
       <label>Atsarga, % <input type="number" id="cSpare" value="0" step="1"></label>
     </div>
   </div>
+  <div class="print-only print-params" id="printParams"></div>
   <div class="card">
     <h2>Suvestinė</h2>
     <div id="sum"></div>
@@ -905,6 +938,23 @@ document.getElementById('sum').addEventListener('click', e => {
 function renderCalc() {
   const c = readCalc();
   const { rows, boards, cap, pieces } = calculate(c);
+  const printParams = document.getElementById('printParams');
+  if (printParams) {
+    printParams.innerHTML =
+      `<h2>Parametrai</h2>` +
+      `<strong>Viršutinis tarpas:</strong> ${c.topGap} mm<br>` +
+      `<strong>Apatinis tarpas:</strong> ${c.bottomGap} mm<br>` +
+      `<strong>Persidengimas:</strong> ${c.overlap} mm<br>` +
+      `<strong>Kraštinės lentos:</strong> ${c.edgeCut ? 'taip' : 'ne'}<br>` +
+      `<strong>Mažiausias pjautos lentos plotis:</strong> ${c.edgeMinWidth} mm<br>` +
+      `<strong>Lentos storis:</strong> ${c.thick} mm<br>` +
+      `<strong>Lentos plotis:</strong> ${c.width} mm<br>` +
+      `<strong>Lentos ilgis:</strong> ${c.stock} mm<br>` +
+      `<strong>Galų nuostolis:</strong> ${c.trim} mm<br>` +
+      `<strong>Pjūvio plotis:</strong> ${c.kerf} mm<br>` +
+      `<strong>Atsarga:</strong> ${c.spare} %<br>` +
+      `<strong>Kaina:</strong> ${c.price} EUR/m³ be PVM`;
+  }
   const link = (r, text) => `<span class="seg-link" data-seg="${r.tag}">${text}</span>`;
   const warnings = rows.filter(r => r.pl <= 0 || r.pl > cap)
     .map(r => link(r, `${r.tag}: detalės ilgis ${r.pl} mm netinka lentai (galima ${cap} mm)`))
@@ -969,6 +1019,7 @@ function renderCalc() {
   document.getElementById('cutTbl').innerHTML = cut;
   applySort('segTbl');
   applySort('cutTbl');
+  renderPrintSegments();
 
   const N = boards.length;
   const m3 = N * c.thick * c.width * c.stock / 1e9;
@@ -1022,7 +1073,7 @@ document.addEventListener('click', e => { if (!e.target.closest('.menu')) setMen
 document.addEventListener('keydown', e => { if (e.key === 'Escape') setMenu(false); });
 document.getElementById('pvClose').addEventListener('click', () => setPreview(false));
 document.getElementById('pvPrint').addEventListener('click', () => window.print());
-window.addEventListener('beforeprint', () => { document.body.classList.add('print-view'); fitLabels(); });
+window.addEventListener('beforeprint', () => { document.body.classList.add('print-view'); renderPrintSegments(); fitLabels(); fitPrintLabels(); });
 window.addEventListener('afterprint', () => { if (!previewOn) document.body.classList.remove('print-view'); fitLabels(); });
 
 let previewIdx = 0;
@@ -1086,6 +1137,55 @@ function fitLabels() {
     svg.querySelectorAll('text[data-off]').forEach(t => t.setAttribute('y', SEG_DIM_Y + Number(t.dataset.off) * size));
   }
 }
+
+function fitPrintLabels() {
+  document.querySelectorAll('.print-seg-svg').forEach(svg => {
+    const vb = (svg.getAttribute('viewBox') || '').split(/\s+/).map(Number);
+    const shown = svg.getBoundingClientRect().width;
+    if (!vb[2] || !shown) return;
+    const size = LABEL_PX * vb[2] / shown;
+    svg.querySelectorAll('text').forEach(t => t.setAttribute('font-size', size));
+  });
+}
+
+function renderPrintSegments() {
+  const host = document.getElementById('printSegTbl');
+  if (!host) return;
+  host.innerHTML = '';
+  const c = readCalc();
+  const { rows } = calculate(c);
+  const rowByTag = new Map(rows.map(r => [r.tag, r]));
+  const fs = LABEL_PX / SEG_PX_PER_MM;
+  for (const s of segmentList()) {
+    const row = rowByTag.get(s.tag);
+    const boxW = s.len + 2 * SEG_PAD;
+    const boxH = (SEG_DIM_Y + fs * 5.6) - (-DATA.dimensions.brick.depth / 2) + 2 * SEG_BOX_MARGIN;
+    const vbX0 = s.len / 2 - boxW / 2;
+    const vbY0 = (-DATA.dimensions.brick.depth / 2 + SEG_DIM_Y + fs * 5.6) / 2 - boxH / 2;
+
+    const tr = el('div', { class: 'print-seg-row' });
+    const drawing = el('div', { class: 'print-seg-drawing' });
+    const svg = el('svg', { xmlns: SVG_NS, viewBox: `${vbX0} ${vbY0} ${boxW} ${boxH}`, class: 'print-seg-svg' });
+    drawSegment(svg, s, fs);
+    drawing.appendChild(svg);
+
+    const info = el('div', { class: 'print-seg-info' });
+    const edge = row && (row.cutFront || row.cutBack)
+      ? `Kraštinė: ${row.cutFront || row.cutBack} mm`
+      : 'Kraštinė: –';
+    info.innerHTML =
+      `<strong>${s.tag}${s.gate ? ' · Vartai' : ''}</strong><br>` +
+      `Ilgis: ${s.len} mm<br>Detalės aukštis: ${row ? row.pl : s.h - c.topGap - c.bottomGap} mm<br>` +
+      `Detalių: ${row ? row.count : 0} (${row ? row.front : 0}+${row ? row.back : 0})<br>` +
+      `Tarpas: ${row ? row.gap.toFixed(0) : '–'} mm · Persidengimas: ${row ? row.overlap.toFixed(0) : '–'} mm<br>` +
+      `${edge}`;
+    tr.appendChild(drawing);
+    tr.appendChild(info);
+    host.appendChild(tr);
+  }
+  fitPrintLabels();
+}
+
 if (typeof ResizeObserver !== 'undefined') {
   const observer = new ResizeObserver(fitLabels);
   LABEL_CARDS.forEach(card => observer.observe(document.getElementById(card.svg)));
