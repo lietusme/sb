@@ -46,6 +46,8 @@
   .dlg-x { margin: 0; background: transparent; border: 0; padding: 4px; line-height: 0; color: #555; }
   .dlg-x:hover { color: #1f2a33; }
   dialog label { display: grid; grid-template-columns: 130px minmax(0, 1fr); align-items: center; gap: 8px; margin-bottom: 8px; }
+  dialog label.toggle-row { display: flex; grid-template-columns: none; justify-content: flex-start; }
+  dialog label.toggle-row input { width: auto; flex: 0 0 auto; }
   dialog input[type=number] { width: 100%; padding: 4px; margin: 0; box-sizing: border-box; }
   dialog menu { display: flex; gap: 8px; justify-content: flex-end; margin: 12px 0 0; padding: 0; }
   dialog button { margin-top: 0; }
@@ -244,6 +246,7 @@
     <div class="dlg-head"><h3 id="dlgTitle"></h3><button value="cancel" formnovalidate class="dlg-x" aria-label="Uždaryti"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M1 1L11 11M11 1L1 11" stroke="currentColor" stroke-width="1.6"/></svg></button></div>
     <label>Ilgis, mm <input type="number" id="dlgLen" step="1" required></label>
     <label>Aukštis H, mm <input type="number" id="dlgH" step="1" required></label>
+    <label class="toggle-row"><input type="checkbox" id="dlgExactHeight"> Aukštis H nekintamas</label>
     <menu>
       <button value="cancel" formnovalidate class="btn-cancel">Atšaukti</button>
       <button id="dlgOk" value="ok" class="btn-save">Išsaugoti</button>
@@ -264,7 +267,7 @@ const DEFAULT = {
           { length: 2490, height: 1710, joint: 'metal' }, { length: 2560, height: 1710, joint: 'metal' },
           { length: 2340, height: 1710, joint: 'brick' }, { length: 1400, height: 1710, joint: 'metal' } ] },
         { name: 'Kairė (vertikali, A→V)', startX: 0, startY: 12020, direction: 'N', startJoint: 'brick2', labelSide: 'R', segments: [
-          { length: 5010, height: 1500, joint: 'brick', gate: true }, { length: 1900, height: 1720, joint: 'brick' },
+          { length: 5010, height: 1500, joint: 'brick', gate: true, exactHeight: true }, { length: 1900, height: 1720, joint: 'brick' },
           { length: 1800, height: 1720, joint: 'brick' }, { length: 1920, height: 1720, joint: 'brick' },
           { length: 1390, height: 1630, joint: 'brick' } ] },
         { name: 'Viršutinė (L→D)', startX: 0, startY: 0, direction: 'E', startJoint: 'brick', segments: [
@@ -277,7 +280,7 @@ const DEFAULT = {
         { runIndex: 0, afterSegment: 3, direction: 'E', length: 2000 } ],
       runs: [
         { name: 'Tarpai (vertikali)', startX: 0, startY: 0, direction: 'S', startJoint: 'metal', labelSide: 'L', segments: [
-          { length: 515, height: 2030, joint: 'metal' }, { length: 1050, height: 1600, joint: 'metal', gate: true },
+          { length: 515, height: 2030, joint: 'metal' }, { length: 1050, height: 1600, joint: 'metal', gate: true, exactHeight: true },
           { length: 550, height: 1600, joint: 'metal' }, { length: 1330, height: 1530, joint: 'metal' },
           { length: 2000, height: 1530, joint: 'metal' }, { length: 2130, height: 1530, joint: 'metal' } ] } ] },
     { id: 'C', originX: 4500, originY: 16500, labelOffset: { offsetX: 500, offsetY: 2500 },
@@ -289,8 +292,8 @@ const DEFAULT = {
           { length: 2370, height: 1530, joint: 'metal' }, { length: 2220, height: 1470, joint: 'brick' } ] },
         { name: 'Dešinė (vertikali)', startX: 4580, startY: 0, direction: 'S', startJoint: 'brick', labelSide: 'R', segments: [
           { length: 1710, height: 1610, joint: 'brick' }, { length: 1610, height: 1635, joint: 'brick' },
-          { length: 1520, height: 1660, joint: 'brick' }, { length: 1100, height: 1130, joint: 'brick' },
-          { length: 5370, height: 1510, joint: 'brick', gate: true }, { length: 1370, height: 1690, joint: 'brick' },
+          { length: 1520, height: 1660, joint: 'brick' }, { length: 1100, height: 1130, joint: 'brick', exactHeight: true },
+          { length: 5370, height: 1510, joint: 'brick', gate: true, exactHeight: true }, { length: 1370, height: 1690, joint: 'brick' },
           { length: 1440, height: 1715, joint: 'brick' }, { length: 1420, height: 1745, joint: 'brick' },
           { length: 1530, height: 1770, joint: 'brick' } ] } ] }
   ],
@@ -315,7 +318,7 @@ function toInternal(ext) {
       runs: sec.runs.map(r => ({
         name: r.name, sx: r.startX, sy: r.startY, dir: r.direction, start: r.startJoint,
         lbl: r.labelPosition, side: r.labelSide,
-        segs: r.segments.map(s => ({ len: s.length, h: s.height, joint: s.joint, gate: s.gate }))
+        segs: r.segments.map(s => ({ len: s.length, h: s.height, joint: s.joint, gate: s.gate, exactHeight: s.exactHeight }))
       }))
     }))
   };
@@ -330,7 +333,7 @@ function toExternal(d) {
       runs: sec.runs.map(r => omitUndefined({
         name: r.name, startX: r.sx, startY: r.sy, direction: r.dir, startJoint: r.start,
         labelPosition: r.lbl, labelSide: r.side,
-        segments: r.segs.map(s => omitUndefined({ length: s.len, height: s.h, joint: s.joint, gate: s.gate }))
+        segments: r.segs.map(s => omitUndefined({ length: s.len, height: s.h, joint: s.joint, gate: s.gate, exactHeight: s.exactHeight }))
       }))
     })),
     dimensions: d.dimensions
@@ -561,6 +564,7 @@ document.getElementById('plan').addEventListener('click', e => {
   document.getElementById('dlgTitle').textContent = `Segmentas ${target.dataset.tag}`;
   document.getElementById('dlgLen').value = seg.len;
   document.getElementById('dlgH').value = seg.h;
+  document.getElementById('dlgExactHeight').checked = !!seg.exactHeight;
   openModal(dlg);
 });
 
@@ -569,6 +573,7 @@ dlg.addEventListener('close', () => {
   const seg = DATA.sections[editing.si].runs[editing.ri].segs[editing.gi];
   seg.len = parseFloat(document.getElementById('dlgLen').value) || seg.len;
   seg.h = parseFloat(document.getElementById('dlgH').value) || seg.h;
+  seg.exactHeight = document.getElementById('dlgExactHeight').checked;
   render();
 });
 
@@ -589,7 +594,7 @@ function segmentList() {
       let prev = run.start;
       for (const s of run.segs) {
         n++;
-        out.push({ tag: sec.id + n, sec: sec.id, num: n, len: s.len, h: s.h, gate: !!s.gate, startJoint: prev, endJoint: s.joint });
+        out.push({ tag: sec.id + n, sec: sec.id, num: n, len: s.len, h: s.h, exactHeight: !!s.exactHeight, gate: !!s.gate, startJoint: prev, endJoint: s.joint });
         prev = s.joint;
       }
     }
@@ -730,7 +735,7 @@ function edgeFit(s, c) {
 function calculate(c) {
   const cap = c.stock - c.trim;
   const rows = segmentList().map(s => {
-    const pl = s.h - c.topGap - c.bottomGap;
+    const pl = s.exactHeight ? s.h : s.h - c.topGap - c.bottomGap;
     const fc = chooseBoards(s, c);
     const base = fc.total;
     const count = Math.ceil(base * (1 + c.spare / 100) - 1e-9);
@@ -1193,7 +1198,8 @@ function drawSegment(svg, s, fs) {
 
   const mid = (x0 + x1) / 2;
   svg.appendChild(el('text', { x: mid, y: dy, 'data-off': 1.8, 'font-size': fs, 'font-weight': 700, 'text-anchor': 'middle', fill: '#111', 'font-family': 'Arial' }, `${s.len}${s.gate ? ' · vartai' : ''}`));
-  svg.appendChild(el('text', { x: mid, y: dy, 'data-off': 3.6, 'font-size': fs, 'text-anchor': 'middle', fill: '#555', 'font-family': 'Arial' }, `Detalės aukštis ${s.h - c.topGap - c.bottomGap} · detalių ${fit.front}+${fit.back}`));
+  const pieceHeight = s.exactHeight ? s.h : s.h - c.topGap - c.bottomGap;
+  svg.appendChild(el('text', { x: mid, y: dy, 'data-off': 3.6, 'font-size': fs, 'text-anchor': 'middle', fill: '#555', 'font-family': 'Arial' }, `Detalės aukštis ${pieceHeight} · detalių ${fit.front}+${fit.back}`));
   let edgeInfo = '';
   if (fit.edgeMode) {
     if (fit.cutFront > 0 && fit.cutBack > 0) edgeInfo = ` · Kraštinės ${fit.cutFront}+${fit.cutBack} mm`;
@@ -1268,6 +1274,7 @@ function validate(d) {
         const sw = `${rw}.segments[${g}]`;
         if (typeof s.length !== 'number' || typeof s.height !== 'number') fail(`${sw}: "length" ir "height" turi būti skaičiai.`);
         if (!JOINTS.includes(s.joint)) fail(`${sw}: neteisinga "joint" reikšmė.`);
+        if (s.exactHeight !== undefined && typeof s.exactHeight !== 'boolean') fail(`${sw}: "exactHeight" turi būti loginė reikšmė.`);
       });
     });
     (sec.extensions || []).forEach((e, x) => {
