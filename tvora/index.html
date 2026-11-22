@@ -147,10 +147,10 @@
   body.print-view .print-seg-row { display: table-row; break-inside: avoid; page-break-inside: avoid; }
   body.print-view .print-seg-drawing,
   body.print-view .print-seg-info { display: table-cell; vertical-align: middle; border: 0.5pt solid #777; }
-  body.print-view .print-seg-drawing { width: 66.666%; padding: 1mm 2mm; position: relative; }
-  body.print-view .print-seg-info { width: 33.333%; padding: 1.5mm 3mm; font-size: 11px; line-height: 1.35; }
+  body.print-view .print-seg-drawing { width: 74%; padding: 1mm 2mm; position: relative; }
+  body.print-view .print-seg-info { width: 26%; padding: 1.5mm 2mm; font-size: 10.5px; line-height: 1.3; }
   body.print-view .print-seg-id { position: absolute; top: 1mm; left: 2mm; font-size: 12px; font-weight: 700; }
-  body.print-view .print-seg-svg { display: block; width: 100%; height: 14mm; margin-top: 3mm; }
+  body.print-view .print-seg-svg { display: block; margin: 3mm auto 0; }
   body.print-view #viewPlan { page-break-after: avoid; break-after: avoid; }
   body.print-view .pg-cut, body.print-view .pg-seg, body.print-view .pg-calc-top {
     page-break-before: always; break-before: page;
@@ -1158,7 +1158,9 @@ const LABEL_GAP_BELOW = 900; // same for labels below it
 const SEG_PX_PER_MM = 0.2; // fixed scale for every segment card: 1 px = 5 mm
 const SEG_PAD = 180; // end columns reach 160 mm past the segment ends; keep only a small margin beyond them
 const SEG_MIN_PX = 260; // narrowest segment card: the widest info line at 12 px is about 230 px
-const SEG_ROWS_PER_PAGE = 12; // print: most segment rows on one A4 sheet (about 19 mm per row)
+const SEG_ROWS_PER_PAGE = 11; // print: segment rows per A4 sheet (about 21 mm per row; 12 overflow the sheet under its heading)
+const PRINT_DRAW_MM_W = 128; // print: drawing cell width available for a segment drawing (mm, 74% of the 180 mm printable width less padding)
+const PRINT_DRAW_MM_H = 14; // print: largest drawing height in a row (mm)
 const SEG_BOX_MARGIN = 60; // space above and below the drawing inside the segment box (mm)
 const SEG_DIM_Y = 380; // height of the width dimension line in segment drawings
 const SEG_CARDS = [
@@ -1251,10 +1253,16 @@ function renderPrintSegments() {
   const rowByTag = new Map(rows.map(r => [r.tag, r]));
   const fs = LABEL_PX / SEG_PX_PER_MM;
   const rowEls = [];
-  for (const s of segmentList()) {
+  const segs = segmentList();
+  // One print scale for every drawing, so zoom does not depend on segment length. The scale is the
+  // largest that fits the longest segment in the drawing cell width, capped so the box height fits the row.
+  const boxHmm = Math.max(DATA.dimensions.brick.depth, DATA.dimensions.metalPillar.depth) + 2 * SEG_BOX_MARGIN;
+  const maxBoxW = Math.max(...segs.map(s => s.len + 2 * SEG_PAD));
+  const mmPerUnit = Math.min(PRINT_DRAW_MM_W / maxBoxW, PRINT_DRAW_MM_H / boxHmm);
+  for (const s of segs) {
     const row = rowByTag.get(s.tag);
     const boxW = s.len + 2 * SEG_PAD;
-    const boxH = 160;
+    const boxH = boxHmm;
     const vbX0 = s.len / 2 - boxW / 2;
     const vbY0 = -boxH / 2;
 
@@ -1267,6 +1275,8 @@ function renderPrintSegments() {
     id.className = 'print-seg-id';
     id.textContent = `${s.tag}${s.gate ? ' · Vartai' : ''}`;
     const svg = el('svg', { xmlns: SVG_NS, viewBox: `${vbX0} ${vbY0} ${boxW} ${boxH}`, class: 'print-seg-svg' });
+    svg.style.width = `${boxW * mmPerUnit}mm`;
+    svg.style.height = `${boxH * mmPerUnit}mm`;
     drawPrintSegment(svg, s);
     drawing.appendChild(id);
     drawing.appendChild(svg);
@@ -1279,17 +1289,15 @@ function renderPrintSegments() {
     info.innerHTML =
       `Detalės aukštis: ${row ? row.pl : s.h - c.topGap - c.bottomGap} mm<br>` +
       `Detalių: ${row ? row.count : 0} (${row ? ((row.cutFront > 0 ? 1 : 0) + (row.cutBack > 0 ? 1 : 0) > 0 ? `${row.front}+${row.back}+${(row.cutFront > 0 ? 1 : 0) + (row.cutBack > 0 ? 1 : 0)}` : `${row.front}+${row.back}`) : '0+0'})<br>` +
-      `Tarpas: ${row ? row.gap.toFixed(0) : '–'} mm · Persidengimas: ${row ? row.overlap.toFixed(0) : '–'} mm<br>` +
+      `Tarpas: ${row ? row.gap.toFixed(0) : '–'} mm<br>` +
+      `Persidengimas: ${row ? row.overlap.toFixed(0) : '–'} mm<br>` +
       `${edge}`;
     tr.appendChild(drawing);
     tr.appendChild(info);
     rowEls.push(tr);
   }
-  // Rows are grouped into A4 sheets of at most SEG_ROWS_PER_PAGE, balanced so no sheet is nearly empty.
-  // Each sheet is a .page block, so the screen preview and the printout break at the same places.
-  const pages = Math.ceil(rowEls.length / SEG_ROWS_PER_PAGE);
-  const perPage = Math.ceil(rowEls.length / pages) || 1;
-  for (let i = 0; i < rowEls.length; i += perPage) {
+  // Rows fill each A4 sheet up to SEG_ROWS_PER_PAGE. Each sheet is a .page block, so the screen preview and the printout break at the same places.
+  for (let i = 0; i < rowEls.length; i += SEG_ROWS_PER_PAGE) {
     const sheet = document.createElement('section');
     sheet.className = 'page print-only print-seg-page';
     if (i === 0) {
@@ -1299,7 +1307,7 @@ function renderPrintSegments() {
     }
     const grid = document.createElement('div');
     grid.className = 'print-seg-grid';
-    rowEls.slice(i, i + perPage).forEach(r => grid.appendChild(r));
+    rowEls.slice(i, i + SEG_ROWS_PER_PAGE).forEach(r => grid.appendChild(r));
     sheet.appendChild(grid);
     host.appendChild(sheet);
   }
