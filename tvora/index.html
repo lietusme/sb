@@ -247,6 +247,7 @@
       </label>
       <label class="toggle-row"><input type="checkbox" id="cEdgeCut"> Apkarpyti kraštines lentas</label>
       <label>Mažiausias pjautos lentos plotis, mm <input type="number" id="cEdgeMinWidth" value="30" step="1"></label>
+      <label>Didžiausias pjautos lentos plotis, mm <input type="number" id="cEdgeMaxWidth" value="100" step="1"></label>
     </div>
     <h3 class="sub-h">Medžiagos</h3>
     <div class="prow">
@@ -615,7 +616,7 @@ dlg.addEventListener('close', () => {
   render();
 });
 
-const CALC_IDS = { topGap: 'cTop', bottomGap: 'cBottom', overlap: 'cOverlap', thick: 'cThick', width: 'cWidth', stock: 'cStock', trim: 'cTrim', kerf: 'cKerf', spare: 'cSpare', price: 'cPrice', edgeMinWidth: 'cEdgeMinWidth' };
+const CALC_IDS = { topGap: 'cTop', bottomGap: 'cBottom', overlap: 'cOverlap', thick: 'cThick', width: 'cWidth', stock: 'cStock', trim: 'cTrim', kerf: 'cKerf', spare: 'cSpare', price: 'cPrice', edgeMinWidth: 'cEdgeMinWidth', edgeMaxWidth: 'cEdgeMaxWidth' };
 
 function readCalc() {
   const c = {};
@@ -716,6 +717,7 @@ function chooseBoards(s, c) {
 function edgeFit(s, c) {
   const d = DATA.dimensions;
   const minEdge = Math.max(1, c.edgeMinWidth || 1);
+  const maxEdge = Math.max(minEdge, c.edgeMaxWidth || c.width);
   const innerRight = s.len - insetOf(s.endJoint, d);
   const insetLeft = insetOf(s.startJoint, d);
   const pitch = 2 * c.width - c.overlap;
@@ -737,7 +739,7 @@ function edgeFit(s, c) {
       x += pitch;
     }
     const residual = innerRight - x;
-    const cutWidth = residual >= minEdge && residual < c.width
+    const cutWidth = residual >= minEdge && residual <= maxEdge
       ? Math.round(residual)
       : 0;
     return { count, cutWidth };
@@ -952,6 +954,7 @@ function renderCalc() {
       `<strong>Persidengimas:</strong> ${c.overlap} mm<br>` +
       `<strong>Kraštinės lentos:</strong> ${c.edgeCut ? 'taip' : 'ne'}<br>` +
       `<strong>Mažiausias pjautos lentos plotis:</strong> ${c.edgeMinWidth} mm<br>` +
+      `<strong>Didžiausias pjautos lentos plotis:</strong> ${c.edgeMaxWidth} mm<br>` +
       `<strong>Lentos storis:</strong> ${c.thick} mm<br>` +
       `<strong>Lentos plotis:</strong> ${c.width} mm<br>` +
       `<strong>Lentos ilgis:</strong> ${c.stock} mm<br>` +
