@@ -1160,7 +1160,7 @@ const SEG_PAD = 180; // end columns reach 160 mm past the segment ends; keep onl
 const SEG_MIN_PX = 260; // narrowest segment card: the widest info line at 12 px is about 230 px
 const SEG_ROWS_PER_PAGE = 11; // print: segment rows per A4 sheet (about 21 mm per row; 12 overflow the sheet under its heading)
 const PRINT_DRAW_MM_W = 128; // print: drawing cell width available for a segment drawing (mm, 74% of the 180 mm printable width less padding)
-const PRINT_DRAW_MM_H = 14; // print: largest drawing height in a row (mm)
+const PRINT_DRAW_MM_H = 16; // print: largest drawing height in a row (mm); the row height comes from the info lines (about 21 mm)
 const SEG_BOX_MARGIN = 60; // space above and below the drawing inside the segment box (mm)
 const SEG_DIM_Y = 380; // height of the width dimension line in segment drawings
 const SEG_CARDS = [
@@ -1254,12 +1254,11 @@ function renderPrintSegments() {
   const fs = LABEL_PX / SEG_PX_PER_MM;
   const rowEls = [];
   const segs = segmentList();
-  // One print scale for every drawing, so zoom does not depend on segment length. The scale is the
-  // largest that fits the longest segment in the drawing cell width, capped so the box height fits the row.
+  // Each drawing is scaled to fit its cell: the width fits long segments, and the height cap (the box is
+  // tall enough for the end columns) limits short segments so they do not zoom beyond the row.
   const boxHmm = Math.max(DATA.dimensions.brick.depth, DATA.dimensions.metalPillar.depth) + 2 * SEG_BOX_MARGIN;
-  const maxBoxW = Math.max(...segs.map(s => s.len + 2 * SEG_PAD));
-  const mmPerUnit = Math.min(PRINT_DRAW_MM_W / maxBoxW, PRINT_DRAW_MM_H / boxHmm);
   for (const s of segs) {
+    const mmPerUnit = Math.min(PRINT_DRAW_MM_W / (s.len + 2 * SEG_PAD), PRINT_DRAW_MM_H / boxHmm);
     const row = rowByTag.get(s.tag);
     const boxW = s.len + 2 * SEG_PAD;
     const boxH = boxHmm;
