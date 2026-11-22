@@ -125,7 +125,7 @@
   body.print-view .hidden { display: block !important; }
   body.print-view .page { padding: 0; margin: 0; min-height: 0; width: auto; box-shadow: none; background: none; }
   body.print-view .sheet { border: none; box-shadow: none; padding: 0; margin: 0; }
-  body.print-view .sheet > svg#plan { height: 150mm; width: 100%; max-width: none; }
+  body.print-view .sheet > svg#plan { height: 245mm; width: 100%; max-width: none; }
   body.print-view .hl-glow { display: none; }
   body.print-view #viewPlan { page-break-after: always; break-after: page; }
   body.print-view .pg-cut, body.print-view .pg-seg, body.print-view .pg-calc-top { page-break-before: always; break-before: page; }
@@ -1184,6 +1184,45 @@ function fitPrintLabels() {
   });
 }
 
+function drawPrintSegment(svg, s) {
+  const d = DATA.dimensions, c = readCalc();
+  const fit = chooseBoards(s, c);
+  const boardStroke = s.gate ? '#b5651d' : '#8a6a4a';
+  const cb = d.crossbrace;
+  const faceY = [-cb.width / 2 - c.thick, cb.width / 2];
+  const insetL = insetOf(s.startJoint, d);
+  const innerRight = s.len - insetOf(s.endJoint, d);
+
+  for (let face = 0; face < 2; face++) {
+    for (const board of fit.faceBoards[face] || []) {
+      svg.appendChild(el('rect', {
+        x: board.x,
+        y: faceY[face],
+        width: board.width,
+        height: c.thick,
+        fill: board.edge ? '#e7a44a' : '#f3e6cf',
+        stroke: boardStroke,
+        'stroke-width': 5
+      }));
+    }
+  }
+  if (s.gate) {
+    const boards = fit.faceBoards.flat();
+    const x0 = boards.length ? Math.min(...boards.map(b => b.x)) : insetL;
+    const x1 = boards.length ? Math.max(...boards.map(b => b.x + b.width)) : innerRight;
+    svg.appendChild(el('rect', {
+      x: x0,
+      y: -cb.width / 2,
+      width: x1 - x0,
+      height: cb.width,
+      fill: '#6b6b6b'
+    }));
+  } else {
+    drawEnd(svg, s.startJoint, 0, +1, d);
+    drawEnd(svg, s.endJoint, s.len, -1, d);
+  }
+}
+
 function renderPrintSegments() {
   const host = document.getElementById('printSegTbl');
   if (!host) return;
@@ -1195,14 +1234,14 @@ function renderPrintSegments() {
   for (const s of segmentList()) {
     const row = rowByTag.get(s.tag);
     const boxW = s.len + 2 * SEG_PAD;
-    const boxH = (SEG_DIM_Y + fs * 5.6) - (-DATA.dimensions.brick.depth / 2) + 2 * SEG_BOX_MARGIN;
+    const boxH = 160;
     const vbX0 = s.len / 2 - boxW / 2;
-    const vbY0 = (-DATA.dimensions.brick.depth / 2 + SEG_DIM_Y + fs * 5.6) / 2 - boxH / 2;
+    const vbY0 = -boxH / 2;
 
     const tr = el('div', { class: 'print-seg-row' });
     const drawing = el('div', { class: 'print-seg-drawing' });
     const svg = el('svg', { xmlns: SVG_NS, viewBox: `${vbX0} ${vbY0} ${boxW} ${boxH}`, class: 'print-seg-svg' });
-    drawSegment(svg, s, fs);
+    drawPrintSegment(svg, s);
     drawing.appendChild(svg);
 
     const info = el('div', { class: 'print-seg-info' });
