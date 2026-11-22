@@ -954,7 +954,7 @@ function renderCalc() {
   sortedGroups.forEach(g => {
     const tags = [...g.tags].sort(tagCmp).join(', ');
     const cutLabel = g.widthKey === 'kraštinės'
-      ? `${fmtPieces(g.lens)} (kraštinės ${g.widths.join(' + ')} mm)`
+      ? `${fmtPieces(g.lens)} (kraštinė ${g.widths[0]} mm)`
       : fmtPieces(g.lens);
     const remLabel = c.edgeCut && g.widthKey === 'kraštinės'
       ? `${g.rem} / ${g.remWidth}`
