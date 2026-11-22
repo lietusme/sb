@@ -240,14 +240,14 @@
     <h2>Parametrai</h2>
     <h3 class="sub-h">Segmento detalės</h3>
     <div class="prow">
-      <label>Viršutinis tarpas, mm <input type="number" id="cTop" value="65" step="1"></label>
+      <label>Viršutinis tarpas, mm <input type="number" id="cTop" value="0" step="1"></label>
       <label>Apatinis tarpas, mm <input type="number" id="cBottom" value="30" step="1"></label>
       <label>Persidengimas, mm
         <input type="number" id="cOverlap" min="0" max="200" step="1" value="20">
       </label>
-      <label class="toggle-row"><input type="checkbox" id="cEdgeCut"> Apkarpyti kraštines lentas</label>
+      <label class="toggle-row"><input type="checkbox" id="cEdgeCut" checked> Apkarpyti kraštines lentas</label>
       <label>Mažiausias pjautos lentos plotis, mm <input type="number" id="cEdgeMinWidth" value="30" step="1"></label>
-      <label>Didžiausias pjautos lentos plotis, mm <input type="number" id="cEdgeMaxWidth" value="100" step="1"></label>
+      <label>Didžiausias pjautos lentos plotis, mm <input type="number" id="cEdgeMaxWidth" value="90" step="1"></label>
     </div>
     <h3 class="sub-h">Medžiagos</h3>
     <div class="prow">
@@ -302,12 +302,12 @@ const DEFAULT = {
           { length: 2490, height: 1710, joint: 'metal' }, { length: 2560, height: 1710, joint: 'metal' },
           { length: 2340, height: 1710, joint: 'brick' }, { length: 1400, height: 1710, joint: 'metal' } ] },
         { name: 'Kairė (vertikali, A→V)', startX: 0, startY: 12020, direction: 'N', startJoint: 'brick2', labelSide: 'R', segments: [
-          { length: 5010, height: 1500, joint: 'brick', gate: true, exactHeight: true }, { length: 1900, height: 1720, joint: 'brick' },
-          { length: 1800, height: 1720, joint: 'brick' }, { length: 1920, height: 1720, joint: 'brick' },
-          { length: 1390, height: 1630, joint: 'brick' } ] },
+          { length: 5010, height: 1500, joint: 'brick', gate: true, exactHeight: true }, { length: 1900, height: 1640, joint: 'brick' },
+          { length: 1800, height: 1640, joint: 'brick' }, { length: 1920, height: 1640, joint: 'brick' },
+          { length: 1390, height: 1550, joint: 'brick' } ] },
         { name: 'Viršutinė (L→D)', startX: 0, startY: 0, direction: 'E', startJoint: 'brick', segments: [
-          { length: 2430, height: 1530, joint: 'metal' }, { length: 2580, height: 1530, joint: 'metal' },
-          { length: 2500, height: 1530, joint: 'metal' }, { length: 2505, height: 1530, joint: 'metal' },
+          { length: 2430, height: 1450, joint: 'metal' }, { length: 2580, height: 1470, joint: 'metal' },
+          { length: 2500, height: 1490, joint: 'metal' }, { length: 2505, height: 1510, joint: 'metal' },
           { length: 2535, height: 1530, joint: 'metal' } ] } ] },
     { id: 'B', originX: 0, originY: 16500, labelOffset: { offsetX: -3600, offsetY: 3800 },
       extensions: [
@@ -326,11 +326,11 @@ const DEFAULT = {
         { name: 'Viršutinė', startX: 0, startY: 0, direction: 'E', startJoint: 'metal', segments: [
           { length: 2370, height: 1530, joint: 'metal' }, { length: 2220, height: 1470, joint: 'brick' } ] },
         { name: 'Dešinė (vertikali)', startX: 4580, startY: 0, direction: 'S', startJoint: 'brick', labelSide: 'R', segments: [
-          { length: 1710, height: 1610, joint: 'brick' }, { length: 1610, height: 1635, joint: 'brick' },
-          { length: 1520, height: 1660, joint: 'brick' }, { length: 1100, height: 1130, joint: 'brick', gate: true, exactHeight: true },
-          { length: 5370, height: 1510, joint: 'brick', gate: true, exactHeight: true }, { length: 1370, height: 1690, joint: 'brick' },
-          { length: 1440, height: 1715, joint: 'brick' }, { length: 1420, height: 1745, joint: 'brick' },
-          { length: 1530, height: 1770, joint: 'brick' } ] } ] }
+          { length: 1710, height: 1530, joint: 'brick' }, { length: 1610, height: 1555, joint: 'brick' },
+          { length: 1520, height: 1580, joint: 'brick' }, { length: 1100, height: 1050, joint: 'brick', gate: true, exactHeight: true },
+          { length: 5370, height: 1510, joint: 'brick', gate: true, exactHeight: true }, { length: 1370, height: 1610, joint: 'brick' },
+          { length: 1440, height: 1635, joint: 'brick' }, { length: 1420, height: 1665, joint: 'brick' },
+          { length: 1530, height: 1690, joint: 'brick' } ] } ] }
   ],
   dimensions: {
     brick: { width: 320, depth: 320 },
