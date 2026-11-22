@@ -163,8 +163,8 @@
   body.print-view .pg-calc-top > .card:first-child .prow { display: none; }
   .pv-bar { display: none; gap: 8px; align-items: center; justify-content: center; padding: 10px; background: #1f2a33; }
   body.print-view .pv-bar { display: flex; }
-  body.preview-on { background: #8c8c8c; }
-  body.preview-on .page {
+  body.preview-on:not(.print-view) { background: #8c8c8c; }
+  body.preview-on:not(.print-view) .page {
     width: 210mm; min-height: 297mm; box-sizing: border-box; margin: 10mm auto; padding: 15mm;
     background-color: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.35);
   }
