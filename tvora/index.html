@@ -631,10 +631,12 @@ function faceBoards(s, fit, c) {
       if (cutWidth > 0) out[face].push({ x: innerRight - cutWidth, width: cutWidth, edge: true });
     }
   } else {
-    for (let k = 0; k < fit.total; k++) {
-      const face = k % 2;
-      const i = Math.floor(k / 2);
-      out[face].push({ x: insetL + i * fit.pitch, width: c.width, edge: false });
+    for (let face = 0; face < 2; face++) {
+      const stagger = face === 0 ? 0 : fit.spacing;
+      const count = face === 0 ? fit.front : fit.back;
+      for (let i = 0; i < count; i++) {
+        out[face].push({ x: insetL + stagger + i * fit.pitch, width: c.width, edge: false });
+      }
     }
   }
   return out;
