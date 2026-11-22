@@ -120,11 +120,11 @@
   body.print-view .pv-open, body.print-view .menu, body.print-view .msg, body.print-view dialog { display: none !important; }
   body.print-view .screen-only,
   body.preview-on .screen-only { display: none !important; }
-  body.print-view .wrap, body.print-view .calc { width: auto; max-width: none; padding: 0; margin: 0; display: block; }
+  body.printing .wrap, body.printing .calc { width: auto; max-width: none; padding: 0; margin: 0; display: block; }
   body.print-view .hidden { display: block !important; }
   body.print-view .page { padding: 0; margin: 0; min-height: 0; width: auto; box-shadow: none; background: none; }
   body.print-view .sheet { border: none; box-shadow: none; padding: 0; margin: 0; }
-  body.print-view .sheet > svg#plan { height: 245mm; width: 100%; max-width: none; }
+  body.print-view .sheet > svg#plan { height: 245mm; width: 180mm; max-width: 100%; }
   body.print-view .hl-glow { display: none; }
   body.print-view #viewPlan { page-break-after: always; break-after: page; }
   body.print-view .pg-cut, body.print-view .pg-seg, body.print-view .pg-calc-top { page-break-before: always; break-before: page; }
@@ -143,14 +143,14 @@
   .print-only { display: none !important; }
   body.print-view .print-only { display: block !important; }
   body.print-view .print-seg-page { page-break-before: always; break-before: page; }
-  body.print-view .print-seg-grid { display: table; width: 100%; border-collapse: collapse; }
+  body.print-view .print-seg-grid { display: table; width: 180mm; max-width: 100%; border-collapse: collapse; }
   body.print-view .print-seg-row { display: table-row; break-inside: avoid; page-break-inside: avoid; }
   body.print-view .print-seg-drawing,
   body.print-view .print-seg-info { display: table-cell; vertical-align: middle; border: 0.5pt solid #777; }
   body.print-view .print-seg-drawing { width: 66.666%; padding: 1mm 2mm; position: relative; }
-  body.print-view .print-seg-info { width: 33.333%; padding: 2mm 3mm; line-height: 1.45; }
+  body.print-view .print-seg-info { width: 33.333%; padding: 1.5mm 3mm; font-size: 11px; line-height: 1.35; }
   body.print-view .print-seg-id { position: absolute; top: 1mm; left: 2mm; font-size: 12px; font-weight: 700; }
-  body.print-view .print-seg-svg { display: block; width: 100%; height: 18mm; margin-top: 5mm; }
+  body.print-view .print-seg-svg { display: block; width: 100%; height: 14mm; margin-top: 3mm; }
   body.print-view #viewPlan { page-break-after: avoid; break-after: avoid; }
   body.print-view .pg-cut, body.print-view .pg-seg, body.print-view .pg-calc-top {
     page-break-before: always; break-before: page;
@@ -163,8 +163,9 @@
   body.print-view .pg-calc-top > .card:first-child .prow { display: none; }
   .pv-bar { display: none; gap: 8px; align-items: center; justify-content: center; padding: 10px; background: #1f2a33; }
   body.print-view .pv-bar { display: flex; }
-  body.preview-on:not(.print-view) { background: #8c8c8c; }
-  body.preview-on:not(.print-view) .page {
+  body.preview-on:not(.printing) .calc { padding: 0; }
+  body.preview-on:not(.printing) { background: #8c8c8c; }
+  body.preview-on:not(.printing) .page {
     width: 210mm; min-height: 297mm; box-sizing: border-box; margin: 10mm auto; padding: 15mm;
     background-color: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.35);
   }
@@ -1099,6 +1100,9 @@ function setPreview(on) {
   previewOn = on;
   document.body.classList.toggle('print-view', on);
   document.body.classList.toggle('preview-on', on);
+  // label size depends on the drawing's laid-out width, so refit once the print width applies
+  fitLabels();
+  fitPrintLabels();
   window.scrollTo(0, 0);
 }
 document.getElementById('pvOpen').addEventListener('click', () => setPreview(true));
@@ -1115,8 +1119,8 @@ document.addEventListener('click', e => { if (!e.target.closest('.menu')) setMen
 document.addEventListener('keydown', e => { if (e.key === 'Escape') setMenu(false); });
 document.getElementById('pvClose').addEventListener('click', () => setPreview(false));
 document.getElementById('pvPrint').addEventListener('click', () => window.print());
-window.addEventListener('beforeprint', () => { document.body.classList.add('print-view'); renderPrintSegments(); fitLabels(); fitPrintLabels(); });
-window.addEventListener('afterprint', () => { if (!previewOn) document.body.classList.remove('print-view'); fitLabels(); });
+window.addEventListener('beforeprint', () => { document.body.classList.add('print-view', 'printing'); renderPrintSegments(); fitLabels(); fitPrintLabels(); });
+window.addEventListener('afterprint', () => { document.body.classList.remove('printing'); if (!previewOn) document.body.classList.remove('print-view'); fitLabels(); });
 
 let previewIdx = 0;
 
@@ -1154,7 +1158,7 @@ const LABEL_GAP_BELOW = 900; // same for labels below it
 const SEG_PX_PER_MM = 0.2; // fixed scale for every segment card: 1 px = 5 mm
 const SEG_PAD = 180; // end columns reach 160 mm past the segment ends; keep only a small margin beyond them
 const SEG_MIN_PX = 260; // narrowest segment card: the widest info line at 12 px is about 230 px
-const SEG_ROWS_PER_PAGE = 9; // print: most segment rows on one A4 sheet (about 26 mm per row)
+const SEG_ROWS_PER_PAGE = 12; // print: most segment rows on one A4 sheet (about 19 mm per row)
 const SEG_BOX_MARGIN = 60; // space above and below the drawing inside the segment box (mm)
 const SEG_DIM_Y = 380; // height of the width dimension line in segment drawings
 const SEG_CARDS = [
