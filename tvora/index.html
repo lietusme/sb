@@ -250,7 +250,7 @@
     <h3 class="sub-h">Medžiagos</h3>
     <div class="prow">
       <label>Lentos storis, mm <input type="number" id="cThick" value="25" step="1"></label>
-      <label>Lentos plotis, mm <input type="number" id="cWidth" value="103" step="1"></label>
+      <label>Lentos plotis, mm <input type="number" id="cWidth" value="105" step="1"></label>
       <label>Lentos ilgis (sandėlyje), mm <input type="number" id="cStock" value="5400" step="10"></label>
       <label>Kaina, EUR/m³ be PVM <input type="number" id="cPrice" value="310" step="1"></label>
     </div>
@@ -791,10 +791,9 @@ function calculate(c) {
     const pl = s.exactHeight ? s.h : s.h - c.topGap - c.bottomGap;
     const fc = chooseBoards(s, c);
     const base = fc.total;
-    const count = Math.ceil(base * (1 + c.spare / 100) - 1e-9);
     // warned when the overlap is more than 50 % above or below the target
     const offTarget = Number.isFinite(fc.overlap) && (fc.overlap > 1.5 * c.overlap || fc.overlap < 0.5 * c.overlap);
-    return { ...s, pl, base, count, front: fc.front, back: fc.back, gap: fc.gap, overlap: fc.overlap,
+    return { ...s, pl, base, front: fc.front, back: fc.back, gap: fc.gap, overlap: fc.overlap,
       edgeWidth: fc.edgeWidth || 0, cutFront: fc.cutFront || 0, cutBack: fc.cutBack || 0,
       edgeMode: !!fc.edgeMode, faceBoards: fc.faceBoards, offTarget, alts: fc.alts };
   });
@@ -812,7 +811,7 @@ function calculate(c) {
         boardPieces++;
       }
     }
-    for (let i = boardPieces; i < r.count; i++) {
+    for (let i = boardPieces; i < r.base; i++) {
       pieces.push({ name: r.tag, len: r.pl, edge: false, width: c.width });
     }
   });
@@ -891,7 +890,8 @@ function calculate(c) {
     }
   }
   boards.forEach(b => { b.items.sort(byName); b.rem = cap - b.used; });
-  return { rows, boards, cap, pieces };
+  // Spare is a share of the total board count, rounded up to whole boards. Spare boards are not packed.
+  return { rows, boards, cap, pieces, spare: Math.ceil(boards.length * c.spare / 100 - 1e-9) };
 }
 
 // Click a column header to sort. Secondary key: segment name in the segment table, "Lentų" in the cut table.
@@ -968,7 +968,7 @@ document.getElementById('sum').addEventListener('click', e => {
 
 function renderCalc() {
   const c = readCalc();
-  const { rows, boards, cap, pieces } = calculate(c);
+  const { rows, boards, cap, pieces, spare } = calculate(c);
   const printParams = document.getElementById('printParams');
   if (printParams) {
     printParams.innerHTML =
@@ -1002,13 +1002,12 @@ function renderCalc() {
     '<th>Tarpas, mm</th><th>Persidengimas, mm</th></tr>';
   let sumCount = 0;
   for (const r of rows) {
-    sumCount += r.count;
-    const spare = r.count > r.base ? ` (+${r.count - r.base})` : '';
+    sumCount += r.base;
     const edgeWidth = r.edgeWidth > 0 ? String(r.edgeWidth) : '–';
     const edgeCount = (r.cutFront > 0 ? 1 : 0) + (r.cutBack > 0 ? 1 : 0);
     const detailCount = edgeCount > 0 ? `${r.front}+${r.back}+${edgeCount}` : `${r.front}+${r.back}`;
     seg += `<tr><td><b>${r.tag}</b>${r.gate ? ' <span class="gate">vartai</span>' : ''}</td>` +
-      `<td>${r.pl}</td><td data-num="${r.count}">${detailCount}${spare}</td>` +
+      `<td>${r.pl}</td><td data-num="${r.base}">${detailCount}</td>` +
       `<td class="${c.edgeCut ? '' : 'hidden-edge-col'}">${edgeWidth}</td>` +
       `<td class="${r.gap < 0 ? 'bad' : ''}">${r.gap.toFixed(0)}</td>` +
       `<td class="${r.offTarget ? 'bad' : ''}">${isNaN(r.overlap) ? '–' : r.overlap.toFixed(0)}</td></tr>`;
@@ -1058,16 +1057,18 @@ function renderCalc() {
     cut += `<tr><td>${cutLabel}</td><td>${g.count}</td><td class="wrapcell" data-num="${g.tags.size}">${tags}</td>` +
       `<td class="${g.rem < 0 || g.remWidth < 0 ? 'bad' : ''}">${remLabel}</td></tr>`;
   });
-  cut += `<tr class="tot"><td>Iš viso</td><td>${boards.length}</td><td></td><td></td></tr>`;
+  if (spare > 0) cut += `<tr class="tot"><td>Atsarga (${c.spare} %)</td><td>${spare}</td><td></td><td>${c.stock}</td></tr>`;
+  cut += `<tr class="tot"><td>Iš viso</td><td>${boards.length + spare}</td><td></td><td></td></tr>`;
   document.getElementById('cutTbl').innerHTML = cut;
   applySort('segTbl');
   applySort('cutTbl');
   renderPrintSegments();
 
-  const N = boards.length;
+  const used = boards.length;
+  const N = used + spare;
   const m3 = N * c.thick * c.width * c.stock / 1e9;
   const eur = m3 * c.price;
-  const trimT = N * c.trim;
+  const trimT = used * c.trim;
   const kerfT = boards.reduce((s, b) => s + Math.max(0, b.items.length - 1) * c.kerf, 0);
   const remT = boards.reduce((s, b) => s + b.rem, 0);
   const edgeRemWidthT = c.edgeCut
@@ -1075,11 +1076,12 @@ function renderCalc() {
     : 0;
   const edgeRemM3 = edgeRemWidthT * c.thick * c.stock / 1e9;
   const totalLen = N * c.stock;
-  const unusedPct = (trimT + kerfT + remT + edgeRemWidthT * c.thick) / totalLen * 100;
+  // Spare boards are whole unused stock, so their full length counts as unused.
+  const unusedPct = (trimT + kerfT + remT + edgeRemWidthT * c.thick + spare * c.stock) / totalLen * 100;
 
   document.getElementById('sum').innerHTML =
     `<div class="sumline">` +
-    `<b>Lentos (${c.stock} mm):</b> ${N} vnt. &nbsp; <b>Metrai:</b> ${(totalLen / 1000).toFixed(1)} m<br>` +
+    `<b>Lentos (${c.stock} mm):</b> ${N} vnt.${spare ? ` (${used} + ${spare} atsarga)` : ''} &nbsp; <b>Metrai:</b> ${(totalLen / 1000).toFixed(1)} m<br>` +
     `<b>Tūris:</b> ${m3.toFixed(3)} m³ &nbsp; <b>Kaina:</b> ${eur.toFixed(0)} EUR be PVM / ${(eur * 1.21).toFixed(0)} EUR su PVM<br>` +
     `<b>Detalių:</b> ${pieces.length}` +
     (warnings.length ? `<div class="warn">${warnings.join('<br>')}</div>` : '') +
@@ -1287,7 +1289,7 @@ function renderPrintSegments() {
       : 'Kraštinė: –';
     info.innerHTML =
       `Detalės aukštis: ${row ? row.pl : s.h - c.topGap - c.bottomGap} mm<br>` +
-      `Detalių: ${row ? row.count : 0} (${row ? ((row.cutFront > 0 ? 1 : 0) + (row.cutBack > 0 ? 1 : 0) > 0 ? `${row.front}+${row.back}+${(row.cutFront > 0 ? 1 : 0) + (row.cutBack > 0 ? 1 : 0)}` : `${row.front}+${row.back}`) : '0+0'})<br>` +
+      `Detalių: ${row ? row.base : 0} (${row ? ((row.cutFront > 0 ? 1 : 0) + (row.cutBack > 0 ? 1 : 0) > 0 ? `${row.front}+${row.back}+${(row.cutFront > 0 ? 1 : 0) + (row.cutBack > 0 ? 1 : 0)}` : `${row.front}+${row.back}`) : '0+0'})<br>` +
       `Tarpas: ${row ? row.gap.toFixed(0) : '–'} mm<br>` +
       `Persidengimas: ${row ? row.overlap.toFixed(0) : '–'} mm<br>` +
       `${edge}`;
@@ -1516,11 +1518,27 @@ function validate(d) {
         fail(`${where}.extensions[${x}]: reikia runIndex, afterSegment, direction ir length.`);
     });
   });
+  if (d.calculator !== undefined) {
+    const cv = d.calculator;
+    if (!cv || typeof cv !== 'object') fail('"calculator" turi būti objektas.');
+    for (const k of Object.keys(CALC_IDS)) if (k in cv && typeof cv[k] !== 'number') fail(`calculator.${k}: turi būti skaičius.`);
+    if ('edgeCut' in cv && typeof cv.edgeCut !== 'boolean') fail('calculator.edgeCut: turi būti loginė reikšmė.');
+  }
   return d;
 }
 
+// Export: the layout plus the calculator parameters, compact.
+function exportJson() {
+  return JSON.stringify({ ...toExternal(DATA), calculator: readCalc() });
+}
+
+function applyCalc(values) {
+  for (const k in CALC_IDS) if (k in values) document.getElementById(CALC_IDS[k]).value = values[k];
+  if ('edgeCut' in values) document.getElementById('cEdgeCut').checked = values.edgeCut;
+}
+
 document.getElementById('copyJson').addEventListener('click', () => {
-  copyText(JSON.stringify(toExternal(DATA), null, 2))
+  copyText(exportJson())
     .then(() => flash('JSON nukopijuotas'))
     .catch(() => flash('Nepavyko nukopijuoti', true));
 });
@@ -1548,6 +1566,7 @@ document.getElementById('jsonLoad').addEventListener('click', () => {
     return;
   }
   DATA = withFixedDimensions(toInternal(parsed));
+  if (parsed.calculator) applyCalc(parsed.calculator);
   jsonDlg.close();
   render();
   flash('JSON įkeltas');
