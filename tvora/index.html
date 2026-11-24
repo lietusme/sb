@@ -251,14 +251,14 @@
     <div class="prow">
       <label>Lentos storis, mm <input type="number" id="cThick" value="25" step="1"></label>
       <label>Lentos plotis, mm <input type="number" id="cWidth" value="105" step="1"></label>
-      <label>Lentos ilgis (sandėlyje), mm <input type="number" id="cStock" value="5400" step="10"></label>
-      <label>Kaina, EUR/m³ be PVM <input type="number" id="cPrice" value="310" step="1"></label>
+      <label>Lentos ilgis (sandėlyje), mm <input type="number" id="cStock" value="4800" step="10"></label>
+      <label>Kaina, EUR/m³ be PVM <input type="number" id="cPrice" value="315" step="1"></label>
     </div>
     <h3 class="sub-h">Likučiai</h3>
     <div class="prow">
       <label>Galų nuostolis lentoje, mm <input type="number" id="cTrim" value="40" step="1"></label>
       <label>Pjūvio plotis, mm <input type="number" id="cKerf" value="2" step="1"></label>
-      <label>Atsarga, % <input type="number" id="cSpare" value="0" step="1"></label>
+      <label>Atsarga, % <input type="number" id="cSpare" value="8.5" step="0.5"></label>
     </div>
   </div>
   <div class="print-only print-params" id="printParams"></div>
@@ -321,13 +321,13 @@ const DEFAULT = {
         { runIndex: 1, afterSegment: 9, direction: 'W', length: 2000 } ],
       runs: [
         { name: 'Viršutinė', startX: 0, startY: 0, direction: 'E', startJoint: 'metal', segments: [
-          { length: 2370, height: 1530, joint: 'metal' }, { length: 2220, height: 1550, joint: 'brick' } ] },
+          { length: 2370, height: 1530, joint: 'metal' }, { length: 2220, height: 1470, joint: 'brick' } ] },
         { name: 'Dešinė (vertikali)', startX: 4580, startY: 0, direction: 'S', startJoint: 'brick', labelSide: 'R', segments: [
-          { length: 1710, height: 1610, joint: 'brick' }, { length: 1610, height: 1635, joint: 'brick' },
-          { length: 1520, height: 1660, joint: 'brick' }, { length: 1100, height: 1730, joint: 'brick', gate: true, exactHeight: true },
-          { length: 5370, height: 1510, joint: 'brick', gate: true, exactHeight: true }, { length: 1370, height: 1610, joint: 'brick' },
-          { length: 1440, height: 1635, joint: 'brick' }, { length: 1420, height: 1665, joint: 'brick' },
-          { length: 1530, height: 1690, joint: 'brick' } ] } ] }
+          { length: 1710, height: 1530, joint: 'brick' }, { length: 1610, height: 1555, joint: 'brick' },
+          { length: 1520, height: 1585, joint: 'brick' }, { length: 1100, height: 1640, joint: 'brick', gate: true, exactHeight: true },
+          { length: 5370, height: 1470, joint: 'brick', gate: true, exactHeight: true }, { length: 1370, height: 1530, joint: 'brick' },
+          { length: 1440, height: 1560, joint: 'brick' }, { length: 1420, height: 1590, joint: 'brick' },
+          { length: 1530, height: 1610, joint: 'brick' } ] } ] }
   ],
   dimensions: {
     brick: { width: 320, depth: 320 },
